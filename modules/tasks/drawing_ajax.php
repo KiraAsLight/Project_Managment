@@ -48,6 +48,10 @@ try {
             updateDrawingStatus($conn);
             break;
 
+        case 'get':
+            getDrawingData($conn);
+            break;
+
         default:
             throw new Exception('Invalid action: ' . $action);
     }
@@ -485,5 +489,45 @@ function getOrCreateEngineeringTask($conn, $pon_id)
     } else {
         throw new Exception('Failed to create Engineering task: ' . $stmt->error);
     }
+}
+
+/**
+ * Get single drawing data
+ */
+function getDrawingData($conn)
+{
+    if (!isset($_GET['id']) || empty($_GET['id'])) {
+        throw new Exception('Drawing ID required');
+    }
+
+    $drawing_id = (int)$_GET['id'];
+
+    $query = "SELECT 
+                ed.*,
+                u.full_name as uploaded_by_name,
+                a.full_name as approved_by_name
+              FROM engineering_drawings ed
+              LEFT JOIN users u ON ed.uploaded_by = u.user_id
+              LEFT JOIN users a ON ed.approved_by = a.user_id
+              WHERE ed.drawing_id = ?";
+
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $drawing_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $drawing = $result->fetch_assoc();
+
+    if (!$drawing) {
+        throw new Exception('Drawing not found');
+    }
+
+    // Format file size for display
+    $drawing['file_size_mb'] = round($drawing['file_size'] / 1024 / 1024, 2);
+    $drawing['file_type_icon'] = getFileTypeIcon($drawing['file_type']);
+
+    echo json_encode([
+        'success' => true,
+        'drawing' => $drawing
+    ]);
 }
 ?>

@@ -335,11 +335,11 @@ include '../../includes/header.php';
 
     function downloadExcelTemplate() {
         const csvContent = `assy_marking,rv,name,quantity,dimensions,length_mm,weight_kg,remarks
-A001,A,Plate 10mm,5,1000x2000,6000,25.5,Main structure plate
-B001,B,Beam H200x200,3,200x200,5500,45.2,Support beam  
-C001,,Angle Bar 50x50x5,10,50x50x5,6000,15.8,Bracing angle
-D001,C,Pipe Ø50x3,8,Ø50x3,6000,12.3,Structural pipe
-E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
+            A001,A,Plate 10mm,5,1000x2000,6000,25.5,Main structure plate
+            B001,B,Beam H200x200,3,200x200,5500,45.2,Support beam  
+            C001,,Angle Bar 50x50x5,10,50x50x5,6000,15.8,Bracing angle
+            D001,C,Pipe Ø50x3,8,Ø50x3,6000,12.3,Structural pipe
+            E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
 
         const blob = new Blob([csvContent], {
             type: 'text/csv;charset=utf-8;'
@@ -359,11 +359,11 @@ E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
 
     function downloadCsvTemplate() {
         const csvContent = `assy_marking,rv,name,quantity,dimensions,length_mm,weight_kg,remarks
-A001,A,Plate 10mm,5,1000x2000,6000,25.5,Main structure plate
-B001,B,Beam H200x200,3,200x200,5500,45.2,Support beam  
-C001,,Angle Bar 50x50x5,10,50x50x5,6000,15.8,Bracing angle
-D001,C,Pipe Ø50x3,8,Ø50x3,6000,12.3,Structural pipe
-E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
+            A001,A,Plate 10mm,5,1000x2000,6000,25.5,Main structure plate
+            B001,B,Beam H200x200,3,200x200,5500,45.2,Support beam  
+            C001,,Angle Bar 50x50x5,10,50x50x5,6000,15.8,Bracing angle
+            D001,C,Pipe Ø50x3,8,Ø50x3,6000,12.3,Structural pipe
+            E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
 
         const blob = new Blob([csvContent], {
             type: 'text/csv;charset=utf-8;'
@@ -379,9 +379,417 @@ E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
         window.URL.revokeObjectURL(url);
     }
 
-    // Drawing Functions
-    function showDrawingUpload() {
-        alert("🔄 Fitur Upload Drawing dalam pengembangan");
+    // ==============================================
+    // DRAWING MANAGEMENT FUNCTIONS
+    // ==============================================
+
+    function showUploadDrawingModal() {
+        <?php if (!canManageMaterial()): ?>
+            alert("You don't have permission to upload drawings");
+            return;
+        <?php endif; ?>
+
+        document.getElementById("drawingUploadForm").reset();
+        document.getElementById("drawingUploadModal").classList.remove("hidden");
+
+        // Set default values
+        document.getElementById("drawing_revision").value = "A";
+        document.getElementById("drawing_status").value = "Draft";
+        document.getElementById("upload_date").value = "<?php echo date('Y-m-d'); ?>";
+    }
+
+    function closeDrawingUploadModal() {
+        document.getElementById("drawingUploadModal").classList.add("hidden");
+    }
+
+    function uploadDrawing(event) {
+        event.preventDefault();
+
+        <?php if (!canManageMaterial()): ?>
+            alert("You don't have permission to upload drawings");
+            return;
+        <?php endif; ?>
+
+        const formData = new FormData(event.target);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+        submitBtn.disabled = true;
+
+        fetch("drawing_ajax.php?action=upload", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeDrawingUploadModal();
+                    alert("✅ " + data.message);
+                    refreshDrawingsList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Upload error:', error);
+                alert("❌ Upload failed: " + error.message);
+            })
+            .finally(() => {
+                // Reset button state
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
+
+    function updateDrawingStatistics(drawings) {
+        const total = drawings.length;
+        const approved = drawings.filter(d => d.status === 'Approved').length;
+        const review = drawings.filter(d => d.status === 'For Review').length;
+        const rejected = drawings.filter(d => d.status === 'Rejected').length;
+
+        document.getElementById('totalDrawings').textContent = total;
+        document.getElementById('approvedDrawings').textContent = approved;
+        document.getElementById('reviewDrawings').textContent = review;
+        document.getElementById('rejectedDrawings').textContent = rejected;
+    }
+
+    // Update refreshDrawingsList function
+    function refreshDrawingsList() {
+        const drawingsTable = document.getElementById('drawingsTableBody');
+        if (drawingsTable) {
+            drawingsTable.innerHTML = `
+                <tr>
+                    <td colspan="9" class="px-4 py-8 text-center text-gray-500">
+                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                        <p>Loading drawings...</p>
+                    </td>
+                </tr>
+            `;
+        }
+
+        fetch(`drawing_ajax.php?action=list&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateDrawingsTable(data.drawings);
+                    updateDrawingStatistics(data.drawings); // Add this line
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Load drawings error:', error);
+                if (drawingsTable) {
+                    drawingsTable.innerHTML = `
+                        <tr>
+                            <td colspan="9" class="px-4 py-8 text-center text-gray-500">
+                                <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                                <p>Error loading drawings</p>
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+    }
+
+    function updateDrawingsTable(drawings) {
+        const tbody = document.getElementById('drawingsTableBody');
+        if (!tbody) return;
+
+        if (drawings.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="px-4 py-8 text-center text-gray-500">
+                        <i class="fas fa-drafting-compass text-4xl mb-3 opacity-50"></i>
+                        <p>No drawings uploaded yet</p>
+                        <button onclick="showUploadDrawingModal()" class="text-blue-400 hover:text-blue-300 mt-2">
+                            <i class="fas fa-plus-circle mr-1"></i>Upload first drawing
+                        </button>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        let html = '';
+        drawings.forEach((drawing, index) => {
+            const statusColors = {
+                'Draft': 'bg-gray-500',
+                'For Review': 'bg-yellow-500',
+                'Approved': 'bg-green-500',
+                'Rejected': 'bg-red-500'
+            };
+
+            const fileTypeIcon = getFileTypeIcon(drawing.file_type);
+            const fileSizeMB = drawing.file_size_mb || (drawing.file_size / 1024 / 1024).toFixed(2);
+
+            html += `
+                <tr class="hover:bg-gray-800 transition">
+                    <td class="px-4 py-3 text-gray-300 text-sm">${index + 1}</td>
+                    <td class="px-4 py-3">
+                        <span class="text-white font-mono text-sm font-semibold">${drawing.drawing_number}</span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="text-white">${escapeHtml(drawing.drawing_name)}</span>
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="text-blue-300 font-semibold">${drawing.revision || 'A'}</span>
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <i class="${fileTypeIcon} text-lg ${fileTypeIcon.includes('pdf') ? 'text-red-400' : 'text-blue-400'}"></i>
+                        <span class="text-gray-400 text-sm ml-1">${drawing.file_type?.split('/')[1]?.toUpperCase() || 'FILE'}</span>
+                    </td>
+                    <td class="px-4 py-3 text-center text-gray-300 text-sm">
+                        ${fileSizeMB} MB
+                    </td>
+                    <td class="px-4 py-3 text-center text-gray-300">
+                        ${formatDateDisplay(drawing.upload_date)}
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold ${statusColors[drawing.status]} text-white">
+                            ${drawing.status}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <div class="flex items-center justify-center space-x-2">
+                            <button onclick="viewDrawing(${drawing.drawing_id})" 
+                                    class="text-green-400 hover:text-green-300" title="View/Download">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button onclick="downloadDrawing(${drawing.drawing_id})" 
+                                    class="text-blue-400 hover:text-blue-300" title="Download">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <?php if (canManageMaterial()): ?>
+                            <button onclick="updateDrawingStatus(${drawing.drawing_id})" 
+                                    class="text-yellow-400 hover:text-yellow-300" title="Update Status">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteDrawing(${drawing.drawing_id})" 
+                                    class="text-red-400 hover:text-red-300" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function getFileTypeIcon(fileType) {
+        if (fileType?.includes('pdf')) return 'fas fa-file-pdf';
+        if (fileType?.includes('dwg') || fileType?.includes('dxf')) return 'fas fa-file-code';
+        return 'fas fa-file';
+    }
+
+    function formatDateDisplay(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function viewDrawing(drawingId) {
+        // Open in new tab for PDF, download for others
+        window.open(`drawing_ajax.php?action=view&id=${drawingId}`, '_blank');
+    }
+
+    function downloadDrawing(drawingId) {
+        window.open(`drawing_ajax.php?action=download&id=${drawingId}`, '_blank');
+    }
+
+    function updateDrawingStatus(drawingId) {
+        <?php if (!canManageMaterial()): ?>
+            alert("You don't have permission to update drawing status");
+            return;
+        <?php endif; ?>
+
+        // Fetch drawing data first
+        fetch(`drawing_ajax.php?action=get&id=${drawingId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showDrawingStatusModal(data.drawing);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading drawing:', error);
+                alert("Error loading drawing data");
+            });
+    }
+
+    function updateStatusSelection(selectedInput) {
+        // Update all option borders
+        document.querySelectorAll('.status-option').forEach(option => {
+            option.classList.remove('border-blue-500', 'bg-blue-900', 'bg-opacity-20');
+            option.classList.add('border-transparent');
+
+            const radio = option.querySelector('input[type="radio"]');
+            const dot = option.querySelector('.w-2.h-2');
+
+            if (radio.checked) {
+                option.classList.add('border-blue-500', 'bg-blue-900', 'bg-opacity-20');
+                option.classList.remove('border-transparent');
+                dot.classList.add('bg-blue-400');
+            } else {
+                dot.classList.remove('bg-blue-400');
+            }
+        });
+
+        // Update hidden select
+        document.getElementById('drawing_status_select').value = selectedInput.value;
+    }
+
+    // Initialize status options on modal show
+    function showDrawingStatusModal(drawing) {
+        document.getElementById("status_drawing_id").value = drawing.drawing_id;
+        document.getElementById("status_drawing_number").textContent = drawing.drawing_number;
+        document.getElementById("status_drawing_name").textContent = drawing.drawing_name;
+        document.getElementById("status_current_status").textContent = drawing.status;
+        document.getElementById("drawing_status_select").value = drawing.status;
+        document.getElementById("status_notes").value = drawing.notes || '';
+
+        // Update status options UI
+        document.querySelectorAll('.status-option').forEach(option => {
+            const radio = option.querySelector('input[type="radio"]');
+            const dot = option.querySelector('.w-2.h-2');
+
+            if (radio.value === drawing.status) {
+                radio.checked = true;
+                option.classList.add('border-blue-500', 'bg-blue-900', 'bg-opacity-20');
+                dot.classList.add('bg-blue-400');
+            } else {
+                radio.checked = false;
+                option.classList.remove('border-blue-500', 'bg-blue-900', 'bg-opacity-20');
+                dot.classList.remove('bg-blue-400');
+            }
+        });
+
+        document.getElementById("drawingStatusModal").classList.remove("hidden");
+    }
+
+    function closeDrawingStatusModal() {
+        document.getElementById("drawingStatusModal").classList.add("hidden");
+    }
+
+    function submitDrawingStatusUpdate(event) {
+        event.preventDefault();
+
+        const formData = new FormData(event.target);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+        submitBtn.disabled = true;
+
+        fetch("drawing_ajax.php?action=update_status", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeDrawingStatusModal();
+                    alert("✅ " + data.message);
+                    refreshDrawingsList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Status update error:', error);
+                alert("❌ Update failed: " + error.message);
+            })
+            .finally(() => {
+                // Reset button state
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
+
+    function deleteDrawing(drawingId) {
+        <?php if (!canManageMaterial()): ?>
+            alert("You don't have permission to delete drawings");
+            return;
+        <?php endif; ?>
+
+        if (!confirm("Are you sure you want to delete this drawing? This action cannot be undone.")) {
+            return;
+        }
+
+        fetch(`drawing_ajax.php?action=delete&id=${drawingId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert("✅ " + data.message);
+                    refreshDrawingsList();
+                } else {
+                    alert("❌ " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Delete error:', error);
+                alert("❌ Delete failed");
+            });
+    }
+
+    // Initialize drawings list when tab is shown
+    function initDrawingsTab() {
+        refreshDrawingsList();
+    }
+
+    // Enhanced tab switching to handle drawings initialization
+    function switchTab(tabName) {
+        // Hide all tab contents
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.add('hidden');
+        });
+
+        // Remove active state from all tabs
+        document.querySelectorAll('[id^="tab-"]').forEach(tab => {
+            tab.classList.remove('border-' + themeColor + '-500', 'text-white');
+            tab.classList.add('border-transparent', 'text-gray-400');
+        });
+
+        // Show selected tab content
+        const contentElement = document.getElementById('content-' + tabName);
+        if (contentElement) {
+            contentElement.classList.remove('hidden');
+
+            // Initialize drawings tab if it's being shown
+            if (tabName === 'drawings') {
+                initDrawingsTab();
+            }
+        }
+
+        // Activate selected tab
+        const tabElement = document.getElementById('tab-' + tabName);
+        if (tabElement) {
+            tabElement.classList.add('border-' + themeColor + '-500', 'text-white');
+            tabElement.classList.remove('border-transparent', 'text-gray-400');
+        }
     }
 
     function updateProgress() {
@@ -1428,6 +1836,207 @@ E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
     </div>
 </div>
 
+<!-- Drawing Upload Modal -->
+<div id="drawingUploadModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-white">Upload Engineering Drawing</h3>
+            <button onclick="closeDrawingUploadModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <form id="drawingUploadForm" onsubmit="uploadDrawing(event)" enctype="multipart/form-data">
+            <input type="hidden" name="pon_id" value="<?php echo $pon_id; ?>">
+            <input type="hidden" name="task_id" value="<?php echo getEngineeringTaskId($conn, $pon_id); ?>">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Drawing Number *</label>
+                    <input type="text" id="drawing_number" name="drawing_number" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="EX: DRW-001">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Revision</label>
+                    <input type="text" id="drawing_revision" name="revision"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="A, B, C, etc." value="A">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Drawing Name *</label>
+                    <input type="text" id="drawing_name" name="drawing_name" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Main Structure Assembly Drawing">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Status</label>
+                    <select id="drawing_status" name="status"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                        <option value="Draft">Draft</option>
+                        <option value="For Review">For Review</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Upload Date</label>
+                    <input type="date" id="upload_date" name="upload_date"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        value="<?php echo date('Y-m-d'); ?>">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Drawing File *</label>
+                    <input type="file" id="drawing_file" name="drawing_file" accept=".pdf,.dwg,.dxf,.PDF,.DWG,.DXF" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <p class="text-gray-400 text-sm mt-1">Supported formats: PDF, DWG, DXF (Max 20MB)</p>
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Notes</label>
+                    <textarea id="drawing_notes" name="notes" rows="3"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Additional notes about this drawing..."></textarea>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3">
+                <button type="button" onclick="closeDrawingUploadModal()"
+                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
+                </button>
+                <button type="submit"
+                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                    <i class="fas fa-upload"></i>
+                    <span>Upload Drawing</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Drawing Status Update Modal -->
+<div id="drawingStatusModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-white">Update Drawing Status</h3>
+            <button onclick="closeDrawingStatusModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <form id="drawingStatusForm" onsubmit="submitDrawingStatusUpdate(event)">
+            <input type="hidden" id="status_drawing_id" name="drawing_id" value="">
+
+            <!-- Drawing Info -->
+            <div class="mb-6 p-4 bg-blue-900 bg-opacity-20 rounded-lg border border-blue-700">
+                <h4 class="text-blue-300 font-semibold mb-2">Drawing Information</h4>
+                <p class="text-white font-semibold" id="status_drawing_number">-</p>
+                <p class="text-gray-300 text-sm" id="status_drawing_name">-</p>
+                <div class="mt-2 flex items-center space-x-2">
+                    <span class="text-gray-400 text-sm">Current Status:</span>
+                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-500 text-white" id="status_current_status">-</span>
+                </div>
+            </div>
+
+            <!-- Status Selection -->
+            <div class="mb-6">
+                <label class="block text-gray-300 font-medium mb-3">Select New Status</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                        <input type="radio" name="status" value="Draft" class="hidden" onchange="updateStatusSelection(this)">
+                        <div class="flex items-center space-x-3 w-full">
+                            <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                <div class="w-2 h-2 rounded-full bg-transparent"></div>
+                            </div>
+                            <div>
+                                <div class="text-white font-medium">Draft</div>
+                                <div class="text-gray-400 text-xs">Initial version</div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                        <input type="radio" name="status" value="For Review" class="hidden" onchange="updateStatusSelection(this)">
+                        <div class="flex items-center space-x-3 w-full">
+                            <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                <div class="w-2 h-2 rounded-full bg-transparent"></div>
+                            </div>
+                            <div>
+                                <div class="text-white font-medium">For Review</div>
+                                <div class="text-gray-400 text-xs">Ready for approval</div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                        <input type="radio" name="status" value="Approved" class="hidden" onchange="updateStatusSelection(this)">
+                        <div class="flex items-center space-x-3 w-full">
+                            <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                <div class="w-2 h-2 rounded-full bg-transparent"></div>
+                            </div>
+                            <div>
+                                <div class="text-white font-medium">Approved</div>
+                                <div class="text-gray-400 text-xs">Final approved</div>
+                            </div>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                        <input type="radio" name="status" value="Rejected" class="hidden" onchange="updateStatusSelection(this)">
+                        <div class="flex items-center space-x-3 w-full">
+                            <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                <div class="w-2 h-2 rounded-full bg-transparent"></div>
+                            </div>
+                            <div>
+                                <div class="text-white font-medium">Rejected</div>
+                                <div class="text-gray-400 text-xs">Needs revision</div>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Hidden select for form submission -->
+                <select id="drawing_status_select" name="status" class="hidden" required>
+                    <option value="Draft">Draft</option>
+                    <option value="For Review">For Review</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
+            </div>
+
+            <!-- Notes -->
+            <div class="mb-6">
+                <label class="block text-gray-300 font-medium mb-2">
+                    Update Notes
+                    <span class="text-gray-400 text-sm font-normal">(optional)</span>
+                </label>
+                <textarea id="status_notes" name="notes" rows="3"
+                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    placeholder="Add notes about this status update..."></textarea>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex items-center justify-end space-x-3">
+                <button type="button" onclick="closeDrawingStatusModal()"
+                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
+                </button>
+                <button type="submit"
+                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                    <i class="fas fa-save"></i>
+                    <span>Update Status</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Import Excel Modal -->
 <div id="importModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-gray-800 rounded-xl p-6 w-full max-w-2xl">
@@ -1879,6 +2488,42 @@ E001,,Channel 100x50x5,6,100x50x5,6000,18.7,Support channel`;
         background: #374151;
         border-radius: 4px;
     }
+
+    /* Status Option Hover Effects */
+    .status-option {
+        transition: all 0.2s ease-in-out;
+    }
+
+    .status-option:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Custom radio button styling */
+    .status-option input[type="radio"]:checked+div .w-4.h-4 {
+        border-color: #3b82f6;
+    }
+
+    .status-option input[type="radio"]:checked+div .w-2.h-2 {
+        background-color: #3b82f6;
+    }
+
+    /* Status color coding in modal */
+    .status-option[data-status="Draft"] {
+        border-left-color: #6b7280;
+    }
+
+    .status-option[data-status="For Review"] {
+        border-left-color: #f59e0b;
+    }
+
+    .status-option[data-status="Approved"] {
+        border-left-color: #10b981;
+    }
+
+    .status-option[data-status="Rejected"] {
+        border-left-color: #ef4444;
+    }
 </style>
 
 <?php
@@ -1890,7 +2535,7 @@ function getDivisionQuickActions($division, $theme_color)
 {
     $actions = [
         'Engineering' => [
-            ['icon' => 'fa-upload', 'title' => 'Upload Drawing', 'subtitle' => 'PDF, DWG, DXF', 'onclick' => 'showDrawingUpload()'],
+            ['icon' => 'fa-upload', 'title' => 'Upload Drawing', 'subtitle' => 'PDF, DWG, DXF', 'onclick' => 'showUploadDrawingModal()'],
             ['icon' => 'fa-list-alt', 'title' => 'Add Material', 'subtitle' => 'New material item', 'onclick' => 'showAddMaterialModal()'],
             ['icon' => 'fa-file-import', 'title' => 'Import Excel', 'subtitle' => 'Bulk import', 'onclick' => 'showImportModal()'],
             ['icon' => 'fa-sync-alt', 'title' => 'Update Progress', 'subtitle' => 'Task completion', 'onclick' => 'updateProgress()']
@@ -2210,15 +2855,106 @@ function getEngineeringTabContent($pon_id, $tasks, $config)
         </div>
     </div>';
 
-    // Drawings Tab
+    // Drawings Tab - UPDATED COMPLETE IMPLEMENTATION
     $html .= '
     <div id="content-drawings" class="tab-content hidden">
-        <div class="bg-dark-light rounded-xl shadow-xl p-8">
-            <div class="text-center py-12">
-                <i class="fas fa-drafting-compass text-6xl text-blue-600 mb-4"></i>
-                <h3 class="text-2xl font-bold text-white mb-2">Engineering Drawings</h3>
-                <p class="text-gray-400 mb-6">Upload and manage technical drawings</p>
-                <p class="text-blue-300 text-sm">Drawing management feature coming soon</p>
+        <div class="bg-dark-light rounded-xl shadow-xl mb-6">
+            <div class="p-6 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-xl font-bold text-white">
+                    <i class="fas fa-drafting-compass text-blue-400 mr-2"></i>
+                    Engineering Drawings Management
+                </h2>
+                ' . (canManageMaterial() ? '
+                <button onclick="showUploadDrawingModal()" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                    <i class="fas fa-upload"></i>
+                    <span>Upload Drawing</span>
+                </button>' : '<span class="text-gray-400 text-sm">Read-only access</span>') . '
+            </div>
+
+            <div class="p-6">
+                <!-- Drawing Statistics -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-2xl font-bold text-blue-400" id="totalDrawings">-</div>
+                                <div class="text-blue-300 text-sm">Total Drawings</div>
+                            </div>
+                            <i class="fas fa-drafting-compass text-blue-400"></i>
+                        </div>
+                    </div>
+                    <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-2xl font-bold text-green-400" id="approvedDrawings">-</div>
+                                <div class="text-green-300 text-sm">Approved</div>
+                            </div>
+                            <i class="fas fa-check-circle text-green-400"></i>
+                        </div>
+                    </div>
+                    <div class="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-2xl font-bold text-yellow-400" id="reviewDrawings">-</div>
+                                <div class="text-yellow-300 text-sm">For Review</div>
+                            </div>
+                            <i class="fas fa-clock text-yellow-400"></i>
+                        </div>
+                    </div>
+                    <div class="bg-red-900 bg-opacity-20 p-4 rounded-lg border border-red-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-2xl font-bold text-red-400" id="rejectedDrawings">-</div>
+                                <div class="text-red-300 text-sm">Rejected</div>
+                            </div>
+                            <i class="fas fa-times-circle text-red-400"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drawings Table -->
+                <div class="bg-gray-800 rounded-lg overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-blue-600 text-white text-sm">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">No.</th>
+                                    <th class="px-4 py-3 text-left">Drawing Number</th>
+                                    <th class="px-4 py-3 text-left">Drawing Name</th>
+                                    <th class="px-4 py-3 text-center">Revision</th>
+                                    <th class="px-4 py-3 text-center">File Type</th>
+                                    <th class="px-4 py-3 text-center">File Size</th>
+                                    <th class="px-4 py-3 text-center">Upload Date</th>
+                                    <th class="px-4 py-3 text-center">Status</th>
+                                    <th class="px-4 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="drawingsTableBody" class="divide-y divide-gray-700">
+                                <tr>
+                                    <td colspan="9" class="px-4 py-8 text-center text-gray-500">
+                                        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                        <p>Loading drawings data...</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Quick Help -->
+                <div class="mt-6 p-4 bg-blue-900 bg-opacity-20 rounded-lg border border-blue-700">
+                    <h4 class="text-blue-300 font-semibold mb-2 flex items-center">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Drawing Management Guide
+                    </h4>
+                    <ul class="text-blue-200 text-sm space-y-1">
+                        <li>• Supported formats: PDF, DWG, DXF (Max 20MB)</li>
+                        <li>• Use consistent drawing numbering for better organization</li>
+                        <li>• Update status to track drawing approval progress</li>
+                        <li>• PDF files can be viewed directly in browser</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>';
