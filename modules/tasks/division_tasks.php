@@ -233,6 +233,8 @@ include '../../includes/header.php';
 
     // Tab Management
     function switchTab(tabName) {
+        console.log('🔄 Switching to tab:', tabName);
+
         // Hide all tab contents
         document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.add('hidden');
@@ -252,22 +254,44 @@ include '../../includes/header.php';
             // Initialize specific tab data
             switch (tabName) {
                 case 'suppliers':
+                    console.log('📋 Loading suppliers...');
                     loadSuppliersList();
                     break;
+
                 case 'delivery':
+                    console.log('🚚 Loading delivery tracking...');
                     loadDeliveriesList();
                     break;
+
+                case 'deliveries': // TAMBAHAN UNTUK DELIVERY NOTES
+                    console.log('📦 Loading delivery notes...');
+                    loadDeliveryNotesList();
+                    break;
+
                 case 'drawings':
+                    console.log('📐 Loading drawings...');
                     initDrawingsTab();
                     break;
+
+                default:
+                    console.log('✅ Tab loaded:', tabName);
             }
+        } else {
+            console.warn('⚠️ Tab content not found:', 'content-' + tabName);
         }
 
-        // Activate selected tab
+        // Activate selected tab button
         const tabElement = document.getElementById('tab-' + tabName);
         if (tabElement) {
             tabElement.classList.add('border-' + themeColor + '-500', 'text-white');
             tabElement.classList.remove('border-transparent', 'text-gray-400');
+        }
+
+        // Update URL hash (optional, untuk bookmark support)
+        if (history.pushState) {
+            history.pushState(null, null, '#' + tabName);
+        } else {
+            window.location.hash = tabName;
         }
     }
 
@@ -2086,6 +2110,311 @@ include '../../includes/header.php';
     }
 
     // ==============================================
+    // DELIVERY NOTES MANAGEMENT FUNCTIONS
+    // ==============================================
+
+    /**
+     * Load Delivery Notes List - NEW FUNCTION
+     */
+    function loadDeliveryNotesList() {
+        showLoading('Loading delivery notes...');
+
+        fetch(`delivery_ajax.php?action=list&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    updateDeliveryNotesTable(data.deliveries);
+                    updateDeliveryNotesStatistics(data.deliveries);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error loading delivery notes:', error);
+                showToast('Error loading delivery notes', 'error');
+            });
+    }
+
+    /**
+     * Update Delivery Notes Table
+     */
+    function updateDeliveryNotesTable(deliveries) {
+        const tbody = document.getElementById('deliveryNotesTableBody');
+        if (!tbody) return;
+
+        if (deliveries.length === 0) {
+            tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                    <i class="fas fa-clipboard-list text-4xl mb-3 opacity-50"></i>
+                    <p>No delivery notes found</p>
+                    <button onclick="showAddDeliveryModal()" class="text-blue-400 hover:text-blue-300 mt-2">
+                        <i class="fas fa-plus-circle mr-1"></i>Create first delivery
+                    </button>
+                </td>
+            </tr>
+        `;
+            return;
+        }
+
+        let html = '';
+        deliveries.forEach((delivery) => {
+            const statusColors = {
+                'Scheduled': 'bg-blue-500',
+                'In Transit': 'bg-yellow-500',
+                'Delivered': 'bg-green-500',
+                'Delayed': 'bg-orange-500',
+                'Cancelled': 'bg-red-500'
+            };
+
+            html += `
+            <tr class="hover:bg-gray-700 transition">
+                <td class="px-4 py-3">
+                    <div class="text-white font-semibold">${delivery.delivery_number}</div>
+                    <div class="text-gray-400 text-xs">${delivery.carrier_name}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-white">PO-${delivery.order_id.toString().padStart(4, '0')}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-gray-300">${escapeHtml(delivery.supplier_name)}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-gray-300">${escapeHtml(delivery.material_type)}</div>
+                </td>
+                <td class="px-4 py-3 text-center text-gray-300">
+                    ${formatDateDisplay(delivery.delivery_date)}
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <div class="text-white font-semibold">${delivery.received_quantity || 0}</div>
+                    <div class="text-gray-400 text-xs">/ ${delivery.order_quantity}</div>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <span class="px-3 py-1 rounded-full text-xs font-semibold ${statusColors[delivery.status]} text-white">
+                        ${delivery.status}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <div class="flex items-center justify-center space-x-2">
+                        <button onclick="viewDeliveryNote(${delivery.delivery_id})" 
+                                class="text-blue-400 hover:text-blue-300" title="View Details">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="downloadDeliveryNote(${delivery.delivery_id})" 
+                                class="text-green-400 hover:text-green-300" title="Download POD">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    /**
+     * Update Delivery Notes Statistics
+     */
+    function updateDeliveryNotesStatistics(deliveries) {
+        const totalNotes = deliveries.length;
+        const completedNotes = deliveries.filter(d => d.status === 'Delivered').length;
+        const inTransitNotes = deliveries.filter(d => d.status === 'In Transit').length;
+
+        // This month deliveries
+        const now = new Date();
+        const thisMonthNotes = deliveries.filter(d => {
+            const deliveryDate = new Date(d.delivery_date);
+            return deliveryDate.getMonth() === now.getMonth() &&
+                deliveryDate.getFullYear() === now.getFullYear();
+        }).length;
+
+        document.getElementById('totalDeliveryNotes').textContent = totalNotes;
+        document.getElementById('completedDeliveryNotes').textContent = completedNotes;
+        document.getElementById('pendingDeliveryNotes').textContent = inTransitNotes;
+        document.getElementById('thisMonthDeliveries').textContent = thisMonthNotes;
+    }
+
+    /**
+     * View Delivery Note Details
+     */
+    function viewDeliveryNote(deliveryId) {
+        showLoading('Loading delivery note...');
+
+        fetch(`delivery_ajax.php?action=get&id=${deliveryId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showDeliveryNoteModal(data.delivery);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showToast('Error loading delivery note', 'error');
+            });
+    }
+
+    /**
+     * Show Delivery Note Modal
+     */
+    function showDeliveryNoteModal(delivery) {
+        const modalHTML = `
+        <div id="deliveryNoteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold text-white">
+                        <i class="fas fa-clipboard-list text-blue-400 mr-2"></i>
+                        Delivery Note Details
+                    </h3>
+                    <button onclick="closeDeliveryNoteModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Delivery Information -->
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="text-blue-300 font-semibold mb-3">Delivery Information</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Delivery Number:</span>
+                                <span class="text-white font-semibold">${delivery.delivery_number}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Delivery Date:</span>
+                                <span class="text-white">${formatDateDisplay(delivery.delivery_date)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Status:</span>
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold ${delivery.status === 'Delivered' ? 'bg-green-500' : 'bg-yellow-500'} text-white">
+                                    ${delivery.status}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="text-green-300 font-semibold mb-3">Order Information</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Order Reference:</span>
+                                <span class="text-white font-semibold">PO-${delivery.order_id.toString().padStart(4, '0')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Supplier:</span>
+                                <span class="text-white">${escapeHtml(delivery.supplier_name)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Material:</span>
+                                <span class="text-white">${escapeHtml(delivery.material_type)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Carrier & Tracking -->
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-purple-300 font-semibold mb-3">Carrier & Tracking</h4>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-400">Carrier:</span>
+                            <span class="text-white ml-2">${escapeHtml(delivery.carrier_name)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Tracking Number:</span>
+                            <span class="text-white ml-2">${delivery.tracking_number || '-'}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Driver:</span>
+                            <span class="text-white ml-2">${delivery.driver_name || '-'}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Vehicle:</span>
+                            <span class="text-white ml-2">${delivery.vehicle_number || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quantity Information -->
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-yellow-300 font-semibold mb-3">Quantity Information</h4>
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                            <div class="text-gray-400 text-sm mb-1">Ordered</div>
+                            <div class="text-2xl font-bold text-white">${delivery.order_quantity}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-400 text-sm mb-1">Received</div>
+                            <div class="text-2xl font-bold text-green-400">${delivery.received_quantity || 0}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-400 text-sm mb-1">Completion</div>
+                            <div class="text-2xl font-bold text-blue-400">
+                                ${delivery.order_quantity > 0 ? Math.round((delivery.received_quantity / delivery.order_quantity) * 100) : 0}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                ${delivery.notes ? `
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-gray-300 font-semibold mb-3">Delivery Notes</h4>
+                    <p class="text-gray-400 text-sm whitespace-pre-wrap">${escapeHtml(delivery.notes)}</p>
+                </div>
+                ` : ''}
+
+                <!-- Action Buttons -->
+                <div class="flex items-center justify-end space-x-3">
+                    <button onclick="downloadDeliveryNote(${delivery.delivery_id})" 
+                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-download"></i>
+                        <span>Download POD</span>
+                    </button>
+                    <button onclick="closeDeliveryNoteModal()" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('deliveryNoteModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeDeliveryNoteModal() {
+        const modal = document.getElementById('deliveryNoteModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    /**
+     * Download Delivery Note (Proof of Delivery)
+     */
+    function downloadDeliveryNote(deliveryId) {
+        showToast('📄 Downloading delivery note...', 'info');
+
+        // Simple download implementation
+        // Untuk production, bisa generate PDF server-side
+        window.open(`delivery_ajax.php?action=download_pod&id=${deliveryId}`, '_blank');
+    }
+
+    // ==============================================
     // ORDER MANAGEMENT FUNCTIONS 
     // ==============================================
 
@@ -2166,103 +2495,109 @@ include '../../includes/header.php';
         }
     }
 
-    function viewOrder(orderId) {
-        // Show detailed order view modal
-        const modalHtml = `
-        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-2xl">
-                <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-xl font-bold text-white">Order Details - PO-${orderId.toString().padStart(4, '0')}</h3>
-                    <button onclick="closeModal()" class="text-gray-400 hover:text-white">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                <div class="space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-gray-400 text-sm">Order Date</label>
-                            <p class="text-white">Loading...</p>
-                        </div>
-                        <div>
-                            <label class="text-gray-400 text-sm">Status</label>
-                            <p class="text-white">Loading...</p>
-                        </div>
-                    </div>
-                    <div class="text-center py-8">
-                        <i class="fas fa-spinner fa-spin text-2xl text-green-400 mb-2"></i>
-                        <p class="text-gray-400">Loading order details...</p>
-                    </div>
-                </div>
-                <div class="flex justify-end mt-6">
-                    <button onclick="closeModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-
-        // Create and show modal
-        const modal = document.createElement('div');
-        modal.innerHTML = modalHtml;
-        modal.id = 'orderDetailModal';
-        document.body.appendChild(modal);
-
-        // Fetch order details via AJAX
-        fetch(`order_ajax.php?action=get&id=${orderId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    updateOrderDetailModal(data.order);
-                }
-            });
-    }
-
     function editOrder(orderId) {
         <?php if (!canManagePurchasing()): ?>
             alert("You don't have permission to edit purchase orders");
             return;
         <?php endif; ?>
 
+        showLoading('Loading order data...');
+
         // Fetch order data via AJAX
         fetch(`order_ajax.php?action=get&id=${orderId}`)
             .then(response => response.json())
             .then(data => {
+                hideLoading();
                 if (data.success) {
                     showEditOrderModal(data.order);
                 } else {
-                    alert("Error loading order data: " + data.message);
+                    throw new Error(data.message);
                 }
             })
             .catch(error => {
+                hideLoading();
                 console.error("Error:", error);
-                alert("Error loading order data");
+                showToast("Error loading order data: " + error.message, 'error');
             });
     }
 
+    /**
+     * Show Edit Order Modal - REVISED VERSION
+     * REPLACE function showEditOrderModal() yang lama
+     */
     function showEditOrderModal(order) {
+        console.log('📝 Editing order:', order);
+
         document.getElementById("orderModalTitle").textContent = "Edit Purchase Order";
         document.getElementById("saveOrderButtonText").textContent = "Update PO";
+
+        // Set order_id untuk update
         document.getElementById("order_id").value = order.order_id;
+
+        // Supplier name (dengan autocomplete)
         document.getElementById("supplier_name").value = order.supplier_name || '';
+
+        // Quantity & Unit
         document.getElementById("order_quantity").value = order.quantity || '';
-        document.getElementById("order_unit").value = order.unit || '';
+        document.getElementById("order_unit").value = order.unit || 'pcs';
+
+        // Dates
         document.getElementById("order_date").value = order.order_date || '';
         document.getElementById("expected_receiving_date").value = order.expected_receiving_date || '';
+
+        // Specifications & Notes
         document.getElementById("specifications").value = order.specifications || '';
         document.getElementById("notes").value = order.notes || '';
 
-        // Handle material selection - TIDAK PERLU populate ulang dropdown
-        if (order.material_id) {
-            document.getElementById("material_id").value = order.material_id;
-            onMaterialSelected(order.material_id);
-        } else {
-            document.getElementById("material_id").value = "custom";
-            onMaterialSelected("custom");
-            document.getElementById("material_type").value = order.material_type || '';
-            document.getElementById("custom_material_name").value = order.material_name || 'Custom Material';
+        // ========================================
+        // MATERIAL SELECTION HANDLING
+        // ========================================
+
+        // Show order info section
+        const orderInfoDiv = document.getElementById("orderInfoDisplay");
+        if (orderInfoDiv) {
+            orderInfoDiv.classList.remove("hidden");
         }
 
+        if (order.material_id) {
+            // Material dari material_lists
+            console.log('✅ Material from list:', order.material_id);
+
+            document.getElementById("material_id").value = order.material_id;
+
+            // Hide custom material fields
+            document.getElementById("customMaterialFields").classList.add("hidden");
+
+            // Show material info
+            const materialInfo = document.getElementById("materialInfo");
+            if (materialInfo) {
+                materialInfo.classList.remove("hidden");
+
+                // Update material info display
+                document.getElementById("info_assy").textContent = order.assy_marking || '-';
+                document.getElementById("info_name").textContent = order.material_name || order.item_name || '-';
+                document.getElementById("info_quantity").textContent = order.quantity || '-';
+                document.getElementById("info_dimensions").textContent = order.dimensions || '-';
+            }
+        } else {
+            // Custom material (tidak ada di material_lists)
+            console.log('🔧 Custom material');
+
+            document.getElementById("material_id").value = "custom";
+
+            // Show custom material fields
+            document.getElementById("customMaterialFields").classList.remove("hidden");
+            document.getElementById("material_type").value = order.material_type || '';
+            document.getElementById("custom_material_name").value = order.item_name || order.material_type || '';
+
+            // Hide material info
+            const materialInfo = document.getElementById("materialInfo");
+            if (materialInfo) {
+                materialInfo.classList.add("hidden");
+            }
+        }
+
+        // Show modal
         document.getElementById("orderModal").classList.remove("hidden");
     }
 
@@ -2382,6 +2717,10 @@ include '../../includes/header.php';
             });
     }
 
+    /**
+     * Enhanced Save Order - Handle both create & update
+     * REPLACE function saveOrder() yang lama
+     */
     function saveOrder(event) {
         event.preventDefault();
 
@@ -2390,37 +2729,237 @@ include '../../includes/header.php';
             return;
         <?php endif; ?>
 
+        // Validate form
+        if (!validateForm(event.target)) {
+            showToast('Please fill all required fields', 'warning');
+            return;
+        }
+
         const formData = new FormData(event.target);
         const submitBtn = event.target.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
 
+        const orderId = document.getElementById("order_id").value;
+        const actionText = orderId ? 'Updating' : 'Creating';
+
         // Show loading state
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + actionText + '...';
         submitBtn.disabled = true;
 
         fetch("order_ajax.php?action=save", {
                 method: "POST",
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network error: ' + response.status);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     closeOrderModal();
-                    alert("✅ " + data.message);
-                    refreshOrdersList();
+                    showToast(data.message, 'success');
+
+                    // Refresh orders list
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
                 } else {
                     throw new Error(data.message);
                 }
             })
             .catch(error => {
                 console.error('Save error:', error);
-                alert("❌ Save failed: " + error.message);
+                showToast("Save failed: " + error.message, 'error');
             })
             .finally(() => {
                 // Reset button state
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
             });
+    }
+
+    /**
+     * View Order Details - Enhanced Version
+     * REPLACE function viewOrder() yang lama
+     */
+    function viewOrder(orderId) {
+        showLoading('Loading order details...');
+
+        fetch(`order_ajax.php?action=get&id=${orderId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showOrderDetailModal(data.order);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showToast('Error loading order details', 'error');
+            });
+    }
+
+    /**
+     * Show Order Detail Modal - NEW ENHANCED VERSION
+     */
+    function showOrderDetailModal(order) {
+        const statusColors = {
+            'Ordered': 'bg-yellow-500',
+            'Partial Received': 'bg-blue-500',
+            'Received': 'bg-green-500',
+            'Cancelled': 'bg-red-500'
+        };
+
+        const modalHTML = `
+        <div id="orderDetailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold text-white">
+                        <i class="fas fa-file-invoice text-green-400 mr-2"></i>
+                        Purchase Order Details
+                    </h3>
+                    <button onclick="closeOrderDetailModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- PO Header -->
+                <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg mb-6 border border-green-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-gray-400 text-sm">Purchase Order Number</div>
+                            <div class="text-2xl font-bold text-white font-mono">PO-${order.order_id.toString().padStart(4, '0')}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-gray-400 text-sm">Status</div>
+                            <span class="px-4 py-2 rounded-full text-sm font-bold ${statusColors[order.status]} text-white">
+                                ${order.status}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Information -->
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <!-- Material Info -->
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="text-blue-300 font-semibold mb-3 flex items-center">
+                            <i class="fas fa-box mr-2"></i>Material Information
+                        </h4>
+                        <div class="space-y-2 text-sm">
+                            ${order.assy_marking && order.assy_marking !== '-' ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Assy Marking:</span>
+                                <span class="text-blue-300 font-mono font-semibold">${escapeHtml(order.assy_marking)}</span>
+                            </div>
+                            ` : ''}
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Item Name:</span>
+                                <span class="text-white font-semibold">${escapeHtml(order.item_name || order.material_name || order.material_type)}</span>
+                            </div>
+                            ${order.dimensions ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Dimensions:</span>
+                                <span class="text-gray-300">${escapeHtml(order.dimensions)}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Supplier Info -->
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="text-green-300 font-semibold mb-3 flex items-center">
+                            <i class="fas fa-building mr-2"></i>Supplier Information
+                        </h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Supplier:</span>
+                                <span class="text-white font-semibold">${escapeHtml(order.supplier_name)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quantity & Dates -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="bg-gray-900 p-4 rounded-lg text-center">
+                        <div class="text-gray-400 text-sm mb-1">Order Quantity</div>
+                        <div class="text-2xl font-bold text-white">${order.quantity || 0}</div>
+                        <div class="text-gray-400 text-xs">${order.unit || 'pcs'}</div>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg text-center">
+                        <div class="text-gray-400 text-sm mb-1">Order Date</div>
+                        <div class="text-white font-semibold">${formatDateDisplay(order.order_date)}</div>
+                    </div>
+                    <div class="bg-gray-900 p-4 rounded-lg text-center">
+                        <div class="text-gray-400 text-sm mb-1">Expected Delivery</div>
+                        <div class="text-white font-semibold">${formatDateDisplay(order.expected_receiving_date)}</div>
+                    </div>
+                </div>
+
+                <!-- Specifications -->
+                ${order.specifications ? `
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-purple-300 font-semibold mb-3 flex items-center">
+                        <i class="fas fa-clipboard-list mr-2"></i>Specifications
+                    </h4>
+                    <p class="text-gray-300 text-sm whitespace-pre-wrap">${escapeHtml(order.specifications)}</p>
+                </div>
+                ` : ''}
+
+                <!-- Notes -->
+                ${order.notes ? `
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-yellow-300 font-semibold mb-3 flex items-center">
+                        <i class="fas fa-sticky-note mr-2"></i>Notes
+                    </h4>
+                    <p class="text-gray-300 text-sm whitespace-pre-wrap">${escapeHtml(order.notes)}</p>
+                </div>
+                ` : ''}
+
+                <!-- Action Buttons -->
+                <div class="flex items-center justify-end space-x-3">
+                    ${order.status !== 'Received' && order.status !== 'Cancelled' ? `
+                    <button onclick="closeOrderDetailModal(); editOrder(${order.order_id})" 
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-edit"></i>
+                        <span>Edit Order</span>
+                    </button>
+                    <button onclick="closeOrderDetailModal(); createDeliveryForOrder(${order.order_id})" 
+                            class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-truck"></i>
+                        <span>Create Delivery</span>
+                    </button>
+                    ` : ''}
+                    <button onclick="closeOrderDetailModal()" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('orderDetailModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeOrderDetailModal() {
+        const modal = document.getElementById('orderDetailModal');
+        if (modal) {
+            modal.remove();
+        }
     }
 
     // Refresh orders list
@@ -3653,7 +4192,8 @@ include '../../includes/header.php';
     </div>
 </div>
 
-<!-- Add/Edit Order Modal -->
+<!-- Add/Edit Order Modal - REVISED VERSION -->
+<!-- REPLACE modal orderModal yang lama dengan ini -->
 <div id="orderModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-gray-800 rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
@@ -3666,6 +4206,20 @@ include '../../includes/header.php';
         <form id="orderForm" onsubmit="saveOrder(event)">
             <input type="hidden" id="order_id" name="order_id" value="">
             <input type="hidden" name="pon_id" value="<?php echo $pon_id; ?>">
+
+            <!-- ORDER INFO DISPLAY (untuk mode edit) -->
+            <div id="orderInfoDisplay" class="hidden mb-6 p-4 bg-green-900 bg-opacity-20 rounded-lg border border-green-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-gray-400 text-sm">Purchase Order Number</div>
+                        <div class="text-xl font-bold text-white font-mono" id="displayOrderNumber">-</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-gray-400 text-sm">Current Status</div>
+                        <span id="displayOrderStatus" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-500 text-white">-</span>
+                    </div>
+                </div>
+            </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <!-- Material Selection -->
@@ -3775,7 +4329,8 @@ include '../../includes/header.php';
                 <div>
                     <label class="block text-gray-300 font-medium mb-2">Order Date</label>
                     <input type="date" id="order_date" name="order_date"
-                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500" value="<?php echo date('Y-m-d'); ?>">
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        value="<?php echo date('Y-m-d'); ?>">
                 </div>
 
                 <div>
@@ -4783,9 +5338,22 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
 {
     global $conn;
 
-    // Get material orders data
-    $orders_query = "SELECT mo.*, u.full_name as created_by_name 
+    // Get material orders dengan JOIN ke material_lists untuk nama item
+    $orders_query = "SELECT 
+                        mo.order_id,
+                        mo.supplier_name,
+                        mo.quantity,
+                        mo.unit,
+                        mo.order_date,
+                        mo.expected_receiving_date,
+                        mo.status,
+                        mo.material_id,
+                        mo.material_type,
+                        COALESCE(ml.name, mo.material_type, 'Custom Material') as item_name,
+                        COALESCE(ml.assy_marking, '-') as assy_marking,
+                        u.full_name as created_by_name 
                      FROM material_orders mo 
+                     LEFT JOIN material_lists ml ON mo.material_id = ml.material_id
                      LEFT JOIN users u ON mo.created_by = u.user_id 
                      WHERE mo.pon_id = ? 
                      ORDER BY mo.order_date DESC";
@@ -4830,10 +5398,13 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
     <div id="content-orders" class="tab-content">
         <div class="bg-dark-light rounded-xl shadow-xl mb-6">
             <div class="p-6 border-b border-gray-700 flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white">
-                    <i class="fas fa-file-invoice text-green-400 mr-2"></i>
-                    Purchase Orders (' . count($orders) . ' orders)
-                </h2>
+                <div>
+                    <h2 class="text-xl font-bold text-white">
+                        <i class="fas fa-file-invoice text-green-400 mr-2"></i>
+                        Purchase Orders (' . count($orders) . ' orders)
+                    </h2>
+                    <p class="text-gray-400 text-sm mt-1">Manage purchase orders with material details</p>
+                </div>
                 ' . (canManagePurchasing() ? '
                 <button onclick="showAddOrderModal()" 
                         class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
@@ -4846,10 +5417,11 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
                 <table class="w-full">
                     <thead class="bg-green-600 text-white text-sm">
                         <tr>
-                            <th class="px-4 py-3 text-left">PO Ref</th>
-                            <th class="px-4 py-3 text-left">Material Type</th>
+                            <th class="px-4 py-3 text-center">No</th>
+                            <th class="px-4 py-3 text-left">No Pre-Order</th>
+                            <th class="px-4 py-3 text-left">Nama Item</th>
                             <th class="px-4 py-3 text-left">Supplier</th>
-                            <th class="px-4 py-3 text-center">Qty</th>
+                            <th class="px-4 py-3 text-center">QTY</th>
                             <th class="px-4 py-3 text-center">Order Date</th>
                             <th class="px-4 py-3 text-center">Expected Delivery</th>
                             <th class="px-4 py-3 text-center">Status</th>
@@ -4861,7 +5433,7 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
     if (empty($orders)) {
         $html .= '
                         <tr>
-                            <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                            <td colspan="9" class="px-4 py-8 text-center text-gray-500">
                                 <i class="fas fa-file-invoice text-4xl mb-3 opacity-50"></i>
                                 <p>No purchase orders found</p>
                                 ' . (canManagePurchasing() ? '
@@ -4871,6 +5443,7 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
                             </td>
                         </tr>';
     } else {
+        $no = 1;
         foreach ($orders as $order) {
             $status_colors = [
                 'Ordered' => 'bg-yellow-500',
@@ -4879,24 +5452,32 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
                 'Cancelled' => 'bg-red-500'
             ];
 
+            // Format item name dengan assy marking jika ada
+            $item_display = htmlspecialchars($order['item_name']);
+            if ($order['assy_marking'] && $order['assy_marking'] != '-') {
+                $item_display = '<span class="text-blue-300 font-mono text-xs">' . htmlspecialchars($order['assy_marking']) . '</span><br>' . $item_display;
+            }
+
             $html .= '
                         <tr class="hover:bg-gray-800 transition">
+                            <td class="px-4 py-3 text-center text-gray-300 text-sm font-semibold">' . $no++ . '</td>
                             <td class="px-4 py-3">
-                                <span class="text-white font-mono text-sm">PO-' . str_pad($order['order_id'], 4, '0', STR_PAD_LEFT) . '</span>
+                                <span class="text-white font-mono text-sm font-bold">PO-' . str_pad($order['order_id'], 4, '0', STR_PAD_LEFT) . '</span>
                             </td>
                             <td class="px-4 py-3">
-                                <span class="text-white">' . htmlspecialchars($order['material_type']) . '</span>
+                                <div class="text-white font-semibold">' . $item_display . '</div>
                             </td>
                             <td class="px-4 py-3">
                                 <span class="text-gray-300">' . htmlspecialchars($order['supplier_name']) . '</span>
                             </td>
-                            <td class="px-4 py-3 text-center text-white font-semibold">
-                                ' . ($order['quantity'] ? number_format($order['quantity'], 2) : '-') . ' ' . ($order['unit'] ?: '') . '
+                            <td class="px-4 py-3 text-center">
+                                <span class="text-white font-bold">' . ($order['quantity'] ? number_format($order['quantity'], 2) : '0') . '</span>
+                                <span class="text-gray-400 text-sm ml-1">' . ($order['unit'] ?: 'pcs') . '</span>
                             </td>
-                            <td class="px-4 py-3 text-center text-gray-300">
+                            <td class="px-4 py-3 text-center text-gray-300 text-sm">
                                 ' . ($order['order_date'] ? format_date_indo($order['order_date']) : '-') . '
                             </td>
-                            <td class="px-4 py-3 text-center text-gray-300">
+                            <td class="px-4 py-3 text-center text-gray-300 text-sm">
                                 ' . ($order['expected_receiving_date'] ? format_date_indo($order['expected_receiving_date']) : '-') . '
                             </td>
                             <td class="px-4 py-3 text-center">
@@ -4907,13 +5488,17 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
                             <td class="px-4 py-3 text-center">
                                 <div class="flex items-center justify-center space-x-2">
                                     <button onclick="viewOrder(' . $order['order_id'] . ')" 
-                                            class="text-green-400 hover:text-green-300" title="View">
+                                            class="text-green-400 hover:text-green-300" title="View Details">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                     ' . (canManagePurchasing() ? '
                                     <button onclick="editOrder(' . $order['order_id'] . ')" 
                                             class="text-blue-400 hover:text-blue-300" title="Edit">
                                         <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button onclick="createDeliveryForOrder(' . $order['order_id'] . ')" 
+                                            class="text-purple-400 hover:text-purple-300" title="Create Delivery">
+                                        <i class="fas fa-truck"></i>
                                     </button>
                                     <button onclick="updateOrderStatus(' . $order['order_id'] . ')" 
                                             class="text-yellow-400 hover:text-yellow-300" title="Update Status">
@@ -4932,6 +5517,28 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
     $html .= '
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Quick Statistics -->
+            <div class="p-4 bg-gray-850 border-t border-gray-700">
+                <div class="grid grid-cols-4 gap-4 text-center text-sm">
+                    <div>
+                        <div class="text-gray-400">Total Orders</div>
+                        <div class="text-white font-bold text-xl">' . count($orders) . '</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400">Ordered</div>
+                        <div class="text-yellow-400 font-bold text-xl">' . count(array_filter($orders, fn($o) => $o['status'] == 'Ordered')) . '</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400">Partial</div>
+                        <div class="text-blue-400 font-bold text-xl">' . count(array_filter($orders, fn($o) => $o['status'] == 'Partial Received')) . '</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400">Received</div>
+                        <div class="text-green-400 font-bold text-xl">' . count(array_filter($orders, fn($o) => $o['status'] == 'Received')) . '</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>';
@@ -4975,73 +5582,175 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
 
     // Delivery Tracking Tab - UPDATE DENGAN TABLE LENGKAP
     $html .= '
-<div id="content-delivery" class="tab-content hidden">
-    <div class="mb-6">
-        <div class="flex justify-between items-center">
-            <h3 class="text-xl font-bold text-white">Delivery Tracking</h3>
-            <button onclick="showAddDeliveryModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition">
-                <i class="fas fa-truck"></i>
-                <span>Schedule Delivery</span>
-            </button>
+    <div id="content-delivery" class="tab-content hidden">
+        <div class="mb-6">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold text-white">Delivery Tracking</h3>
+                <button onclick="showAddDeliveryModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition">
+                    <i class="fas fa-truck"></i>
+                    <span>Schedule Delivery</span>
+                </button>
+            </div>
+            <p class="text-gray-400 mt-2">Track all deliveries and manage shipping information</p>
         </div>
-        <p class="text-gray-400 mt-2">Track all deliveries and manage shipping information</p>
-    </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div class="bg-blue-900 bg-opacity-20 p-6 rounded-lg border border-blue-700">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-2xl font-bold text-blue-400" id="scheduledDeliveries">0</div>
-                    <div class="text-blue-300 text-sm">Scheduled</div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <div class="bg-blue-900 bg-opacity-20 p-6 rounded-lg border border-blue-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-blue-400" id="scheduledDeliveries">0</div>
+                        <div class="text-blue-300 text-sm">Scheduled</div>
+                    </div>
+                    <i class="fas fa-clock text-blue-400 text-2xl"></i>
                 </div>
-                <i class="fas fa-clock text-blue-400 text-2xl"></i>
+            </div>
+            <div class="bg-yellow-900 bg-opacity-20 p-6 rounded-lg border border-yellow-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-yellow-400" id="inTransitDeliveries">0</div>
+                        <div class="text-yellow-300 text-sm">In Transit</div>
+                    </div>
+                    <i class="fas fa-shipping-fast text-yellow-400 text-2xl"></i>
+                </div>
+            </div>
+            <div class="bg-green-900 bg-opacity-20 p-6 rounded-lg border border-green-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-green-400" id="deliveredDeliveries">0</div>
+                        <div class="text-green-300 text-sm">Delivered</div>
+                    </div>
+                    <i class="fas fa-check-circle text-green-400 text-2xl"></i>
+                </div>
             </div>
         </div>
-        <div class="bg-yellow-900 bg-opacity-20 p-6 rounded-lg border border-yellow-700">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-2xl font-bold text-yellow-400" id="inTransitDeliveries">0</div>
-                    <div class="text-yellow-300 text-sm">In Transit</div>
-                </div>
-                <i class="fas fa-shipping-fast text-yellow-400 text-2xl"></i>
-            </div>
-        </div>
-        <div class="bg-green-900 bg-opacity-20 p-6 rounded-lg border border-green-700">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-2xl font-bold text-green-400" id="deliveredDeliveries">0</div>
-                    <div class="text-green-300 text-sm">Delivered</div>
-                </div>
-                <i class="fas fa-check-circle text-green-400 text-2xl"></i>
-            </div>
-        </div>
-    </div>
 
-    <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="min-w-full">
-                <thead class="bg-gray-700">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery #</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Order Info</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Carrier & Tracking</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Schedule</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="deliveriesTableBody" class="bg-gray-800 divide-y divide-gray-700">
-                    <tr>
-                        <td colspan="6" class="px-4 py-8 text-center text-gray-500">
-                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                            <p>Loading deliveries data...</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Order Info</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Carrier & Tracking</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Schedule</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deliveriesTableBody" class="bg-gray-800 divide-y divide-gray-700">
+                        <tr>
+                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                <p>Loading deliveries data...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
-</div>';
+    </div>';
+
+    // Delivery Notes Tab - TAMBAHKAN SETELAH content-delivery
+    $html .= '
+    <div id="content-deliveries" class="tab-content hidden">
+        <div class="mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h3 class="text-xl font-bold text-white">Delivery Notes & Documentation</h3>
+                    <p class="text-gray-400 mt-2">Complete delivery records with proof of delivery (POD)</p>
+                </div>
+                <button onclick="showAddDeliveryModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>Create Delivery Note</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-blue-400" id="totalDeliveryNotes">0</div>
+                        <div class="text-blue-300 text-sm">Total Delivery Notes</div>
+                    </div>
+                    <i class="fas fa-clipboard-list text-blue-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-green-400" id="completedDeliveryNotes">0</div>
+                        <div class="text-green-300 text-sm">Completed</div>
+                    </div>
+                    <i class="fas fa-check-circle text-green-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-yellow-400" id="pendingDeliveryNotes">0</div>
+                        <div class="text-yellow-300 text-sm">In Transit</div>
+                    </div>
+                    <i class="fas fa-shipping-fast text-yellow-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-purple-900 bg-opacity-20 p-4 rounded-lg border border-purple-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-purple-400" id="thisMonthDeliveries">0</div>
+                        <div class="text-purple-300 text-sm">This Month</div>
+                    </div>
+                    <i class="fas fa-calendar-alt text-purple-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delivery Notes Table -->
+        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery Note #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Order Reference</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Material</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery Date</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Received Qty</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deliveryNotesTableBody" class="bg-gray-800 divide-y divide-gray-700">
+                        <tr>
+                            <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                <p>Loading delivery notes...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Info Box -->
+        <div class="mt-6 p-4 bg-blue-900 bg-opacity-20 rounded-lg border border-blue-700">
+            <h4 class="text-blue-300 font-semibold mb-2 flex items-center">
+                <i class="fas fa-info-circle mr-2"></i>
+                Delivery Notes Management
+            </h4>
+            <ul class="text-blue-200 text-sm space-y-1">
+                <li>• Delivery notes are automatically created from delivery tracking</li>
+                <li>• Each delivery note contains proof of delivery (POD) and received quantities</li>
+                <li>• Update received quantities to match actual delivery</li>
+                <li>• Track partial deliveries and backorders</li>
+            </ul>
+        </div>
+    </div>';
 
 
     return $html;
