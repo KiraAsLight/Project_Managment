@@ -126,6 +126,108 @@ include '../../includes/header.php';
     const themeColor = '<?php echo $config['theme_color']; ?>';
 
     // ==============================================
+    // UTILITY FUNCTIONS 
+    // ==============================================
+
+    function formatDateDisplay(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+
+    function formatDateTimeDisplay(dateTimeString) {
+        if (!dateTimeString) return '-';
+        const date = new Date(dateTimeString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg text-white ${
+        type === 'success' ? 'bg-green-600' : 
+        type === 'error' ? 'bg-red-600' : 
+        type === 'warning' ? 'bg-yellow-600' : 'bg-blue-600'
+        }`;
+        toast.innerHTML = `
+        <div class="flex items-center space-x-2">
+            <i class="fas ${
+                type === 'success' ? 'fa-check-circle' : 
+                type === 'error' ? 'fa-exclamation-circle' : 
+                type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'
+            }"></i>
+            <span>${message}</span>
+        </div>
+        `;
+
+        document.body.appendChild(toast);
+
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 5000);
+    }
+
+    function showLoading(message = 'Loading...') {
+        let loading = document.getElementById('globalLoading');
+        if (!loading) {
+            loading = document.createElement('div');
+            loading.id = 'globalLoading';
+            loading.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            loading.innerHTML = `
+            <div class="bg-gray-800 rounded-lg p-6 flex items-center space-x-3">
+                <i class="fas fa-spinner fa-spin text-blue-400 text-xl"></i>
+                <span class="text-white">${message}</span>
+            </div>
+        `;
+            document.body.appendChild(loading);
+        }
+    }
+
+    function hideLoading() {
+        const loading = document.getElementById('globalLoading');
+        if (loading && loading.parentNode) {
+            loading.parentNode.removeChild(loading);
+        }
+    }
+
+    function validateForm(form) {
+        const requiredFields = form.querySelectorAll('[required]');
+        let isValid = true;
+
+        requiredFields.forEach(field => {
+            if (!field.value.trim()) {
+                field.classList.add('border-red-500');
+                isValid = false;
+            } else {
+                field.classList.remove('border-red-500');
+            }
+        });
+
+        return isValid;
+    }
+
+    // ==============================================
     // COMMON FUNCTIONS
     // ==============================================
 
@@ -146,6 +248,19 @@ include '../../includes/header.php';
         const contentElement = document.getElementById('content-' + tabName);
         if (contentElement) {
             contentElement.classList.remove('hidden');
+
+            // Initialize specific tab data
+            switch (tabName) {
+                case 'suppliers':
+                    loadSuppliersList();
+                    break;
+                case 'delivery':
+                    loadDeliveriesList();
+                    break;
+                case 'drawings':
+                    initDrawingsTab();
+                    break;
+            }
         }
 
         // Activate selected tab
@@ -154,6 +269,25 @@ include '../../includes/header.php';
             tabElement.classList.add('border-' + themeColor + '-500', 'text-white');
             tabElement.classList.remove('border-transparent', 'text-gray-400');
         }
+    }
+
+    function getStatusColor(status) {
+        const colors = {
+            'Completed': 'bg-green-500',
+            'In Progress': 'bg-orange-500',
+            'Pending': 'bg-gray-500',
+            'Rejected': 'bg-red-500',
+        };
+        return colors[status] || 'bg-gray-500';
+    }
+
+    function getProgressColor(progress) {
+        if (progress >= 90) return 'text-green-400';
+        if (progress >= 70) return 'text-green-300';
+        if (progress >= 50) return 'text-yellow-400';
+        if (progress >= 30) return 'text-orange-400';
+        if (progress > 0) return 'text-red-400';
+        return 'text-gray-400';
     }
 
     // ==============================================
@@ -207,31 +341,6 @@ include '../../includes/header.php';
             });
     }
 
-    function deleteMaterial(materialId) {
-        <?php if (!canManageMaterial()): ?>
-            alert("You don't have permission to delete materials");
-            return;
-        <?php endif; ?>
-
-        if (confirm("Are you sure you want to delete this material?")) {
-            fetch(`material_ajax.php?action=delete&id=${materialId}`, {
-                    method: "DELETE"
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        location.reload();
-                    } else {
-                        alert("Error deleting material: " + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error("Error:", error);
-                    alert("Error deleting material");
-                });
-        }
-    }
-
     function saveMaterial(event) {
         event.preventDefault();
 
@@ -259,6 +368,31 @@ include '../../includes/header.php';
                 console.error("Error:", error);
                 alert("Error saving material");
             });
+    }
+
+    function deleteMaterial(materialId) {
+        <?php if (!canManageMaterial()): ?>
+            alert("You don't have permission to delete materials");
+            return;
+        <?php endif; ?>
+
+        if (confirm("Are you sure you want to delete this material?")) {
+            fetch(`material_ajax.php?action=delete&id=${materialId}`, {
+                    method: "DELETE"
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert("Error deleting material: " + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error:", error);
+                    alert("Error deleting material");
+                });
+        }
     }
 
     function closeMaterialModal() {
@@ -587,25 +721,6 @@ include '../../includes/header.php';
         return 'fas fa-file';
     }
 
-    function formatDateDisplay(dateString) {
-        if (!dateString) return '-';
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
-    }
-
-    function escapeHtml(unsafe) {
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
     function viewDrawing(drawingId) {
         // Open in new tab for PDF, download for others
         window.open(`drawing_ajax.php?action=view&id=${drawingId}`, '_blank');
@@ -793,7 +908,119 @@ include '../../includes/header.php';
     }
 
     function updateProgress() {
-        alert("📊 Fitur Update Progress dalam pengembangan");
+        <?php if (!canManageMaterial()): ?>
+            alert("You don't have permission to update progress");
+            return;
+        <?php endif; ?>
+
+        // Show loading in modal
+        document.getElementById("taskSelectionBody").innerHTML = `
+            <div class="text-center py-8">
+                <i class="fas fa-spinner fa-spin text-2xl text-blue-400 mb-2"></i>
+                <p class="text-gray-400">Loading engineering tasks...</p>
+            </div>
+        `;
+
+        document.getElementById("taskSelectionModal").classList.remove("hidden");
+
+        // Fetch engineering tasks
+        fetch(`progress_ajax.php?action=get_tasks&pon_id=<?php echo $pon_id; ?>&division=Engineering`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.tasks.length > 0) {
+                        updateTaskSelectionList(data.tasks);
+                    } else {
+                        document.getElementById("taskSelectionBody").innerHTML = `
+                            <div class="text-center py-8 text-gray-500">
+                                <i class="fas fa-tasks text-3xl mb-3 opacity-50"></i>
+                                <p>No engineering tasks found</p>
+                                <p class="text-sm text-blue-300 mt-2">Create tasks first in the Tasks tab</p>
+                            </div>
+                        `;
+                    }
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Error loading tasks:", error);
+                document.getElementById("taskSelectionBody").innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                        <p>Error loading tasks</p>
+                        <p class="text-sm">${error.message}</p>
+                    </div>
+                `;
+            });
+    }
+
+    function updateTaskSelectionList(tasks) {
+        const tbody = document.getElementById("taskSelectionBody");
+        let html = '';
+
+        tasks.forEach(task => {
+            const progressColor = getProgressColor(task.progress);
+            const statusColor = getStatusColor(task.status);
+
+            html += `
+                <div class="task-selection-item p-4 bg-gray-750 rounded-lg mb-3 cursor-pointer hover:bg-gray-700 transition border border-gray-600"
+                     onclick="selectTaskForProgressUpdate(${task.task_id})">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <h4 class="text-white font-semibold text-lg">${escapeHtml(task.task_name)}</h4>
+                            <div class="flex items-center space-x-4 mt-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-gray-400 text-sm">Phase:</span>
+                                    <span class="text-blue-300 text-sm font-medium">${task.phase}</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-gray-400 text-sm">Status:</span>
+                                    <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor}">${task.status}</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-gray-400 text-sm">Due:</span>
+                                    <span class="text-gray-300 text-sm">${formatDateDisplay(task.finish_date)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold ${progressColor}">${task.progress}%</div>
+                            <div class="w-24 bg-gray-600 rounded-full h-2 mt-1">
+                                <div class="h-2 rounded-full ${progressColor.replace('text-', 'bg-')}" style="width: ${task.progress}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+
+
+    function selectTaskForProgressUpdate(taskId) {
+        closeTaskSelectionModal();
+
+        // Fetch task detail dan buka progress update modal
+        fetch(`progress_ajax.php?action=get&id=${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showProgressUpdateModal(data.task);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Error loading task:", error);
+                alert("Error loading task data");
+            });
+    }
+
+    function closeTaskSelectionModal() {
+        document.getElementById("taskSelectionModal").classList.add("hidden");
     }
 
     // Progress Update Functions
@@ -818,14 +1045,15 @@ include '../../includes/header.php';
         document.getElementById("progress_task_id").value = task.task_id;
         document.getElementById("progress_slider").value = task.progress || 0;
         document.getElementById("progress_status").value = task.status || 'Not Started';
-        document.getElementById("progress_notes").value = task.notes || '';
+        document.getElementById("progress_notes").value = '';
 
+        // Update display
         updateProgressValue(task.progress || 0);
-        document.getElementById("progressUpdateModal").classList.remove("hidden");
-    }
 
-    function closeProgressUpdateModal() {
-        document.getElementById("progressUpdateModal").classList.add("hidden");
+        // Update modal title dengan task name
+        document.querySelector("#progressUpdateModal h3").textContent = `Update Progress: ${task.task_name}`;
+
+        document.getElementById("progressUpdateModal").classList.remove("hidden");
     }
 
     function updateProgressValue(value) {
@@ -873,15 +1101,994 @@ include '../../includes/header.php';
             });
     }
 
+    function closeProgressUpdateModal() {
+        document.getElementById("progressUpdateModal").classList.add("hidden");
+    }
+
     function refreshTasksList() {
-        location.reload();
+        // Refresh tasks tab jika sedang aktif
+        if (!document.getElementById('content-tasks').classList.contains('hidden')) {
+            location.reload(); // Simple refresh untuk sekarang
+        }
     }
 
     // ==============================================
     // PURCHASING FUNCTIONS
     // ==============================================
 
-    // Purchasing Order Functions
+    // ==============================================
+    // SUPPLIER MANAGEMENT FUNCTIONS - COMPLETE
+    // ==============================================
+
+    function showAddSupplierModal() {
+        document.getElementById("supplierModalTitle").textContent = "Add New Supplier";
+        document.getElementById("saveSupplierButtonText").textContent = "Save Supplier";
+        document.getElementById("supplierForm").reset();
+        document.getElementById("supplier_id").value = "";
+        document.getElementById("supplierModal").classList.remove("hidden");
+    }
+
+    function editSupplier(supplierId) {
+        showLoading('Loading supplier data...');
+
+        fetch(`supplier_ajax.php?action=get&id=${supplierId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    document.getElementById("supplierModalTitle").textContent = "Edit Supplier";
+                    document.getElementById("saveSupplierButtonText").textContent = "Update Supplier";
+                    document.getElementById("supplier_id").value = data.supplier.supplier_id;
+                    document.getElementById("supplier_name").value = data.supplier.supplier_name;
+                    document.getElementById("contact_person").value = data.supplier.contact_person;
+                    document.getElementById("phone").value = data.supplier.phone;
+                    document.getElementById("email").value = data.supplier.email;
+                    document.getElementById("address").value = data.supplier.address || '';
+                    document.getElementById("city").value = data.supplier.city || '';
+                    document.getElementById("country").value = data.supplier.country || 'Indonesia';
+                    document.getElementById("tax_number").value = data.supplier.tax_number || '';
+                    document.getElementById("bank_account").value = data.supplier.bank_account || '';
+                    document.getElementById("payment_terms").value = data.supplier.payment_terms || '';
+                    document.getElementById("supplier_notes").value = data.supplier.notes || '';
+
+                    document.getElementById("supplierModal").classList.remove("hidden");
+                } else {
+                    showToast('Error loading supplier data', 'error');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error("Error:", error);
+                showToast('Error loading supplier data', 'error');
+            });
+    }
+
+    function saveSupplier(event) {
+        event.preventDefault();
+
+        if (!validateForm(event.target)) {
+            showToast('Please fill all required fields', 'warning');
+            return;
+        }
+
+        const formData = new FormData(event.target);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        submitBtn.disabled = true;
+
+        fetch("supplier_ajax.php?action=save", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeSupplierModal();
+                    showToast(data.message, 'success');
+                    refreshSuppliersList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Save error:', error);
+                showToast("Save failed: " + error.message, 'error');
+            })
+            .finally(() => {
+                // Reset button state
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
+
+    function deleteSupplier(supplierId) {
+        if (!confirm("Are you sure you want to delete this supplier?")) {
+            return;
+        }
+
+        showLoading('Deleting supplier...');
+
+        fetch(`supplier_ajax.php?action=delete&id=${supplierId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    refreshSuppliersList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Delete error:', error);
+                showToast("Delete failed: " + error.message, 'error');
+            });
+    }
+
+    function closeSupplierModal() {
+        document.getElementById("supplierModal").classList.add("hidden");
+    }
+
+    function refreshSuppliersList() {
+        if (document.getElementById('content-suppliers') &&
+            !document.getElementById('content-suppliers').classList.contains('hidden')) {
+            loadSuppliersList();
+        }
+    }
+
+    function loadSuppliersList() {
+        showLoading('Loading suppliers...');
+
+        fetch('supplier_ajax.php?action=list')
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    updateSuppliersTable(data.suppliers);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error loading suppliers:', error);
+                showToast('Error loading suppliers', 'error');
+            });
+    }
+
+    function updateSuppliersTable(suppliers) {
+        const tbody = document.getElementById('suppliersTableBody');
+        if (!tbody) return;
+
+        if (suppliers.length === 0) {
+            tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                    <i class="fas fa-address-book text-4xl mb-3 opacity-50"></i>
+                    <p>No suppliers found</p>
+                    <button onclick="showAddSupplierModal()" class="text-green-400 hover:text-green-300 mt-2">
+                        <i class="fas fa-plus-circle mr-1"></i>Add first supplier
+                    </button>
+                </td>
+            </tr>
+        `;
+            return;
+        }
+
+        let html = '';
+        suppliers.forEach((supplier, index) => {
+            html += `
+            <tr class="hover:bg-gray-800 transition">
+                <td class="px-4 py-3 text-gray-300 text-sm">${index + 1}</td>
+                <td class="px-4 py-3">
+                    <div class="text-white font-semibold">${escapeHtml(supplier.supplier_name)}</div>
+                    <div class="text-gray-400 text-xs">${supplier.order_count || 0} orders</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-white">${escapeHtml(supplier.contact_person)}</div>
+                    <div class="text-gray-400 text-xs">${escapeHtml(supplier.phone)}</div>
+                    <div class="text-gray-400 text-xs">${escapeHtml(supplier.email)}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-gray-300 text-sm">${escapeHtml(supplier.city || 'N/A')}</div>
+                    <div class="text-gray-400 text-xs">${escapeHtml(supplier.tax_number || 'No tax number')}</div>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <span class="px-2 py-1 rounded-full text-xs font-semibold ${supplier.is_active ? 'bg-green-500' : 'bg-gray-500'} text-white">
+                        ${supplier.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-center text-gray-300 text-sm">
+                    ${formatDateDisplay(supplier.created_at)}
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <div class="flex items-center justify-center space-x-2">
+                        <button onclick="editSupplier(${supplier.supplier_id})" 
+                                class="text-blue-400 hover:text-blue-300" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteSupplier(${supplier.supplier_id})" 
+                                class="text-red-400 hover:text-red-300" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    // ==============================================
+    // DELIVERY MANAGEMENT FUNCTIONS - COMPLETE
+    // ==============================================
+
+    function showAddDeliveryModal(orderId = null) {
+        document.getElementById("deliveryModalTitle").textContent = "Schedule Delivery";
+        document.getElementById("saveDeliveryButtonText").textContent = "Save Delivery";
+        document.getElementById("deliveryForm").reset();
+        document.getElementById("delivery_id").value = "";
+
+        // Set default delivery number
+        const deliveryNumber = 'DEL-' + new Date().getTime();
+        document.getElementById("delivery_number").value = deliveryNumber;
+        document.getElementById("delivery_date").value = new Date().toISOString().split('T')[0];
+
+        // Reset order info section
+        document.getElementById("deliveryOrderInfo").classList.add("hidden");
+        document.getElementById("delivery_order_id").value = "";
+
+        // Jika ada orderId, set dan load order info
+        if (orderId) {
+            document.getElementById("delivery_order_id").value = orderId;
+            loadOrderInfoForDelivery(orderId);
+        } else {
+            // Jika tidak ada orderId, tampilkan dropdown untuk memilih order
+            showOrderSelectionForDelivery();
+        }
+
+        document.getElementById("deliveryModal").classList.remove("hidden");
+    }
+
+    function showOrderSelectionForDelivery() {
+        const orderInfoDiv = document.getElementById("deliveryOrderInfo");
+        orderInfoDiv.innerHTML = `
+        <h4 class="text-blue-300 font-semibold mb-2">Select Purchase Order</h4>
+        <div class="mb-3">
+            <label class="block text-gray-300 font-medium mb-2">Purchase Order *</label>
+            <select id="order_selection" name="order_id" required
+                class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                <option value="">-- Select Purchase Order --</option>
+            </select>
+        </div>
+        <div id="selectedOrderInfo" class="hidden mt-3 p-3 bg-blue-900 bg-opacity-20 rounded-lg">
+            <h5 class="text-blue-200 font-semibold mb-2">Selected Order Info</h5>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <div><span class="text-gray-400">Supplier:</span> <span id="selected_supplier" class="text-white">-</span></div>
+                <div><span class="text-gray-400">Material:</span> <span id="selected_material" class="text-white">-</span></div>
+                <div><span class="text-gray-400">Quantity:</span> <span id="selected_quantity" class="text-white">-</span></div>
+                <div><span class="text-gray-400">Status:</span> <span id="selected_status" class="text-white">-</span></div>
+            </div>
+        </div>
+    `;
+        orderInfoDiv.classList.remove("hidden");
+
+        // Load available orders
+        loadAvailableOrdersForDelivery();
+    }
+
+    function loadAvailableOrdersForDelivery() {
+        showLoading('Loading purchase orders...');
+
+        fetch(`order_ajax.php?action=list&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    populateOrderSelection(data.orders);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error loading orders:', error);
+                showToast('Error loading purchase orders', 'error');
+            });
+    }
+
+    function populateOrderSelection(orders) {
+        const orderSelect = document.getElementById("order_selection");
+        if (!orderSelect) return;
+
+        // Clear existing options except the first one
+        orderSelect.innerHTML = '<option value="">-- Select Purchase Order --</option>';
+
+        // Filter orders that are not yet fully delivered
+        const availableOrders = orders.filter(order =>
+            order.status === 'Ordered' || order.status === 'Partial Received'
+        );
+
+        if (availableOrders.length === 0) {
+            orderSelect.innerHTML = '<option value="">No available purchase orders</option>';
+            return;
+        }
+
+        availableOrders.forEach(order => {
+            const option = document.createElement('option');
+            option.value = order.order_id;
+            option.textContent = `PO-${order.order_id.toString().padStart(4, '0')} - ${order.supplier_name} - ${order.material_type}`;
+            option.setAttribute('data-order', JSON.stringify(order));
+            orderSelect.appendChild(option);
+        });
+
+        // Add event listener for order selection change
+        orderSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.value) {
+                const orderData = JSON.parse(selectedOption.getAttribute('data-order'));
+                showSelectedOrderInfo(orderData);
+                document.getElementById("delivery_order_id").value = orderData.order_id;
+            } else {
+                document.getElementById("selectedOrderInfo").classList.add("hidden");
+                document.getElementById("delivery_order_id").value = "";
+            }
+        });
+    }
+
+    function showSelectedOrderInfo(orderData) {
+        const infoDiv = document.getElementById("selectedOrderInfo");
+        document.getElementById("selected_supplier").textContent = orderData.supplier_name;
+        document.getElementById("selected_material").textContent = orderData.material_type;
+        document.getElementById("selected_quantity").textContent = orderData.quantity + ' ' + (orderData.unit || '');
+
+        const statusColors = {
+            'Ordered': 'text-yellow-400',
+            'Partial Received': 'text-blue-400',
+            'Received': 'text-green-400'
+        };
+
+        document.getElementById("selected_status").innerHTML =
+            `<span class="${statusColors[orderData.status] || 'text-gray-400'}">${orderData.status}</span>`;
+
+        infoDiv.classList.remove("hidden");
+    }
+
+    function editDelivery(deliveryId) {
+        showLoading('Loading delivery data...');
+
+        fetch(`delivery_ajax.php?action=get&id=${deliveryId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    document.getElementById("deliveryModalTitle").textContent = "Edit Delivery";
+                    document.getElementById("saveDeliveryButtonText").textContent = "Update Delivery";
+
+                    const delivery = data.delivery;
+                    document.getElementById("delivery_id").value = delivery.delivery_id;
+                    document.getElementById("delivery_order_id").value = delivery.order_id;
+                    document.getElementById("delivery_number").value = delivery.delivery_number;
+                    document.getElementById("delivery_date").value = delivery.delivery_date;
+                    document.getElementById("carrier_name").value = delivery.carrier_name;
+                    document.getElementById("driver_name").value = delivery.driver_name || '';
+                    document.getElementById("vehicle_number").value = delivery.vehicle_number || '';
+                    document.getElementById("tracking_number").value = delivery.tracking_number || '';
+                    document.getElementById("delivery_status").value = delivery.status;
+                    document.getElementById("delivery_notes").value = delivery.notes || '';
+
+                    // Set datetime values
+                    if (delivery.estimated_arrival) {
+                        document.getElementById("estimated_arrival").value = delivery.estimated_arrival.replace(' ', 'T').substring(0, 16);
+                    }
+                    if (delivery.actual_arrival) {
+                        // For display only, not editable
+                    }
+
+                    // Show order info
+                    loadOrderInfoForDelivery(delivery.order_id);
+
+                    document.getElementById("deliveryModal").classList.remove("hidden");
+                } else {
+                    showToast('Error loading delivery data', 'error');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error("Error:", error);
+                showToast('Error loading delivery data', 'error');
+            });
+    }
+
+    function loadOrderInfoForDelivery(orderId) {
+        showLoading('Loading order information...');
+
+        fetch(`order_ajax.php?action=get&id=${orderId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    const order = data.order;
+                    const orderInfoDiv = document.getElementById("deliveryOrderInfo");
+                    orderInfoDiv.innerHTML = `
+                    <h4 class="text-blue-300 font-semibold mb-2">Order Information</h4>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-400">Order:</span>
+                            <span class="text-white ml-2">PO-${order.order_id.toString().padStart(4, '0')}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Supplier:</span>
+                            <span class="text-white ml-2">${escapeHtml(order.supplier_name)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Material:</span>
+                            <span class="text-white ml-2">${escapeHtml(order.material_type)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">Quantity:</span>
+                            <span class="text-white ml-2">${order.quantity} ${order.unit || ''}</span>
+                        </div>
+                    </div>
+                `;
+                    orderInfoDiv.classList.remove("hidden");
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error loading order info:', error);
+                showToast('Error loading order information', 'error');
+            });
+    }
+
+    function saveDelivery(event) {
+        event.preventDefault();
+
+        // Get the order_id from either hidden field or selection
+        let orderId = document.getElementById("delivery_order_id").value;
+
+        // If no orderId from hidden field, try to get from selection
+        if (!orderId) {
+            const orderSelect = document.getElementById("order_selection");
+            if (orderSelect) {
+                orderId = orderSelect.value;
+            }
+        }
+
+        // Validate order_id
+        if (!orderId) {
+            showToast('Please select a purchase order', 'warning');
+            return;
+        }
+
+        if (!validateForm(event.target)) {
+            showToast('Please fill all required fields', 'warning');
+            return;
+        }
+
+        const formData = new FormData(event.target);
+
+        // Ensure order_id is included in form data
+        if (!formData.has('order_id')) {
+            formData.append('order_id', orderId);
+        }
+
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        submitBtn.disabled = true;
+
+        fetch("delivery_ajax.php?action=save", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network error: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    closeDeliveryModal();
+                    showToast(data.message, 'success');
+                    refreshDeliveriesList();
+                    refreshOrdersList(); // Refresh orders to update status
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Save error:', error);
+                showToast("Save failed: " + error.message, 'error');
+            })
+            .finally(() => {
+                // Reset button state
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
+
+    function closeDeliveryModal() {
+        document.getElementById("deliveryModal").classList.add("hidden");
+    }
+
+    function updateDeliveryStatus(deliveryId, currentStatus) {
+        const newStatus = prompt(`Update delivery status from "${currentStatus}":\n\n- Scheduled\n- In Transit\n- Delivered\n- Delayed\n- Cancelled`, currentStatus);
+
+        if (newStatus && newStatus !== currentStatus) {
+            const formData = new FormData();
+            formData.append('delivery_id', deliveryId);
+            formData.append('status', newStatus);
+
+            showLoading('Updating delivery status...');
+
+            fetch("delivery_ajax.php?action=update_status", {
+                    method: "POST",
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    hideLoading();
+                    if (data.success) {
+                        showToast(data.message, 'success');
+                        refreshDeliveriesList();
+                        refreshOrdersList();
+                    } else {
+                        throw new Error(data.message);
+                    }
+                })
+                .catch(error => {
+                    hideLoading();
+                    console.error('Status update error:', error);
+                    showToast("Status update failed: " + error.message, 'error');
+                });
+        }
+    }
+
+    function showReceiveModal(deliveryId) {
+        showLoading('Loading delivery information...');
+
+        fetch(`delivery_ajax.php?action=get&id=${deliveryId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    const delivery = data.delivery;
+                    document.getElementById("receive_delivery_id").value = delivery.delivery_id;
+                    document.getElementById("receive_delivery_number").textContent = delivery.delivery_number;
+                    document.getElementById("receive_order_info").textContent = `${delivery.supplier_name} - ${delivery.material_type}`;
+                    document.getElementById("receive_previous").textContent = delivery.received_quantity || 0;
+                    document.getElementById("received_quantity").value = '';
+                    document.getElementById("receive_notes").value = '';
+
+                    document.getElementById("receiveModal").classList.remove("hidden");
+                } else {
+                    showToast('Error loading delivery data', 'error');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error("Error:", error);
+                showToast('Error loading delivery data', 'error');
+            });
+    }
+
+    function receiveItems(event) {
+        event.preventDefault();
+
+        const formData = new FormData(event.target);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Receiving...';
+        submitBtn.disabled = true;
+
+        fetch("delivery_ajax.php?action=receive_items", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeReceiveModal();
+                    showToast(data.message, 'success');
+                    refreshDeliveriesList();
+                    refreshOrdersList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Receive error:', error);
+                showToast("Receive failed: " + error.message, 'error');
+            })
+            .finally(() => {
+                // Reset button state
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
+
+    function closeReceiveModal() {
+        document.getElementById("receiveModal").classList.add("hidden");
+    }
+
+    function refreshDeliveriesList() {
+        if (document.getElementById('content-delivery') &&
+            !document.getElementById('content-delivery').classList.contains('hidden')) {
+            loadDeliveriesList();
+        }
+    }
+
+    function loadDeliveriesList() {
+        showLoading('Loading deliveries...');
+
+        fetch(`delivery_ajax.php?action=list&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    updateDeliveriesTable(data.deliveries);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error loading deliveries:', error);
+                showToast('Error loading deliveries', 'error');
+            });
+    }
+
+    function updateDeliveriesTable(deliveries) {
+        const tbody = document.getElementById('deliveriesTableBody');
+        if (!tbody) return;
+
+        if (deliveries.length === 0) {
+            tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                    <i class="fas fa-truck text-4xl mb-3 opacity-50"></i>
+                    <p>No deliveries found</p>
+                    <button onclick="showAddDeliveryModal()" class="text-blue-400 hover:text-blue-300 mt-2">
+                        <i class="fas fa-plus-circle mr-1"></i>Schedule first delivery
+                    </button>
+                </td>
+            </tr>
+        `;
+            return;
+        }
+
+        let html = '';
+        deliveries.forEach((delivery, index) => {
+            const statusColors = {
+                'Scheduled': 'bg-blue-500',
+                'In Transit': 'bg-yellow-500',
+                'Delivered': 'bg-green-500',
+                'Delayed': 'bg-orange-500',
+                'Cancelled': 'bg-red-500'
+            };
+
+            const progressPercentage = delivery.order_quantity > 0 ?
+                Math.round((delivery.received_quantity / delivery.order_quantity) * 100) : 0;
+
+            html += `
+            <tr class="hover:bg-gray-800 transition">
+                <td class="px-4 py-3">
+                    <div class="text-white font-semibold">${delivery.delivery_number}</div>
+                    <div class="text-gray-400 text-xs">${delivery.tracking_number || 'No tracking'}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-white font-semibold">PO-${delivery.order_id.toString().padStart(4, '0')}</div>
+                    <div class="text-gray-400 text-sm">${delivery.supplier_name}</div>
+                    <div class="text-gray-400 text-xs">${delivery.material_type}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-white">${delivery.carrier_name}</div>
+                    <div class="text-gray-400 text-sm">${delivery.driver_name || 'No driver'}</div>
+                    <div class="text-gray-400 text-xs">${delivery.vehicle_number || 'No vehicle'}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <div class="text-white text-sm">${formatDateDisplay(delivery.delivery_date)}</div>
+                    <div class="text-gray-400 text-xs">
+                        ${delivery.estimated_arrival ? 'ETA: ' + formatDateTimeDisplay(delivery.estimated_arrival) : 'No ETA'}
+                    </div>
+                    ${delivery.actual_arrival ? `
+                    <div class="text-green-400 text-xs">
+                        Delivered: ${formatDateTimeDisplay(delivery.actual_arrival)}
+                    </div>
+                    ` : ''}
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <div class="flex flex-col items-center space-y-2">
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold ${statusColors[delivery.status]} text-white">
+                            ${delivery.status}
+                        </span>
+                        ${delivery.status === 'Delivered' ? `
+                        <div class="w-full bg-gray-700 rounded-full h-2">
+                            <div class="bg-green-500 h-2 rounded-full" style="width: ${progressPercentage}%"></div>
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            ${delivery.received_quantity || 0} / ${delivery.order_quantity} (${progressPercentage}%)
+                        </div>
+                        ` : ''}
+                    </div>
+                </td>
+                <td class="px-4 py-3 text-center">
+                    <div class="flex items-center justify-center space-x-2">
+                        ${delivery.status !== 'Delivered' ? `
+                        <button onclick="showReceiveModal(${delivery.delivery_id})" 
+                                class="text-green-400 hover:text-green-300" title="Receive Items">
+                            <i class="fas fa-check-circle"></i>
+                        </button>
+                        ` : ''}
+                        <button onclick="editDelivery(${delivery.delivery_id})" 
+                                class="text-blue-400 hover:text-blue-300" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="updateDeliveryStatus(${delivery.delivery_id}, '${delivery.status}')" 
+                                class="text-yellow-400 hover:text-yellow-300" title="Update Status">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button onclick="deleteDelivery(${delivery.delivery_id})" 
+                                class="text-red-400 hover:text-red-300" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function deleteDelivery(deliveryId) {
+        if (!confirm("Are you sure you want to delete this delivery?")) {
+            return;
+        }
+
+        showLoading('Deleting delivery...');
+
+        fetch(`delivery_ajax.php?action=delete&id=${deliveryId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    refreshDeliveriesList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Delete error:', error);
+                showToast("Delete failed: " + error.message, 'error');
+            });
+    }
+
+    // Auto-suggest suppliers
+    function initSupplierAutocomplete() {
+        const supplierInput = document.getElementById('supplier_name');
+        if (supplierInput) {
+            let timeoutId;
+
+            supplierInput.addEventListener('input', function(e) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    const searchTerm = e.target.value;
+                    if (searchTerm.length >= 2) {
+                        searchSuppliers(searchTerm);
+                    }
+                }, 300);
+            });
+        }
+    }
+
+    function searchSuppliers(searchTerm) {
+        if (!searchTerm || searchTerm.length < 2) {
+            removeSupplierSuggestions();
+            return;
+        }
+
+        fetch(`supplier_ajax.php?action=search&q=${encodeURIComponent(searchTerm)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network error: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showSupplierSuggestions(data.suppliers);
+                } else {
+                    removeSupplierSuggestions();
+                }
+            })
+            .catch(error => {
+                console.error('Search error:', error);
+                removeSupplierSuggestions();
+            });
+    }
+
+    function showSupplierSuggestions(suppliers) {
+        // Remove existing suggestions dropdown
+        removeSupplierSuggestions();
+
+        if (!suppliers || suppliers.length === 0) {
+            return;
+        }
+
+        const supplierInput = document.getElementById('supplier_name');
+        if (!supplierInput) return;
+
+        // Create suggestions dropdown
+        const suggestionsDiv = document.createElement('div');
+        suggestionsDiv.id = 'supplier-suggestions';
+        suggestionsDiv.className = 'absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto';
+
+        suppliers.forEach(supplier => {
+            const suggestionItem = document.createElement('div');
+            suggestionItem.className = 'px-4 py-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0';
+            suggestionItem.innerHTML = `
+            <div class="text-white font-semibold">${escapeHtml(supplier.supplier_name)}</div>
+            <div class="text-gray-400 text-sm">${escapeHtml(supplier.contact_person)} • ${escapeHtml(supplier.phone)}</div>
+            <div class="text-gray-400 text-xs">${escapeHtml(supplier.email)}</div>
+        `;
+
+            suggestionItem.addEventListener('click', function() {
+                selectSupplier(supplier);
+                removeSupplierSuggestions();
+            });
+
+            suggestionsDiv.appendChild(suggestionItem);
+        });
+
+        // Position the dropdown below the input field
+        const inputRect = supplierInput.getBoundingClientRect();
+        suggestionsDiv.style.width = inputRect.width + 'px';
+        suggestionsDiv.style.top = (inputRect.bottom + window.scrollY) + 'px';
+        suggestionsDiv.style.left = inputRect.left + 'px';
+
+        document.body.appendChild(suggestionsDiv);
+
+        // Close suggestions when clicking outside
+        setTimeout(() => {
+            document.addEventListener('click', closeSupplierSuggestionsOnClickOutside);
+        }, 100);
+    }
+
+    function removeSupplierSuggestions() {
+        const existingSuggestions = document.getElementById('supplier-suggestions');
+        if (existingSuggestions) {
+            existingSuggestions.remove();
+        }
+        document.removeEventListener('click', closeSupplierSuggestionsOnClickOutside);
+    }
+
+    function closeSupplierSuggestionsOnClickOutside(event) {
+        const supplierInput = document.getElementById('supplier_name');
+        const suggestionsDiv = document.getElementById('supplier-suggestions');
+
+        if (supplierInput && suggestionsDiv &&
+            !supplierInput.contains(event.target) &&
+            !suggestionsDiv.contains(event.target)) {
+            removeSupplierSuggestions();
+        }
+    }
+
+    function selectSupplier(supplier) {
+        const supplierInput = document.getElementById('supplier_name');
+        if (supplierInput) {
+            supplierInput.value = supplier.supplier_name;
+
+            // Optional: You can also auto-fill other fields if needed
+            // document.getElementById('contact_person').value = supplier.contact_person || '';
+            // document.getElementById('phone').value = supplier.phone || '';
+            // document.getElementById('email').value = supplier.email || '';
+        }
+    }
+
+    function initSupplierAutocomplete() {
+        const supplierInput = document.getElementById('supplier_name');
+        if (supplierInput) {
+            let timeoutId;
+
+            supplierInput.addEventListener('input', function(e) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    const searchTerm = e.target.value.trim();
+                    if (searchTerm.length >= 2) {
+                        searchSuppliers(searchTerm);
+                    } else {
+                        removeSupplierSuggestions();
+                    }
+                }, 300);
+            });
+
+            // Also remove suggestions when input loses focus
+            supplierInput.addEventListener('blur', function() {
+                setTimeout(removeSupplierSuggestions, 200);
+            });
+
+            // Prevent form submit when selecting with Enter
+            supplierInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    const suggestions = document.getElementById('supplier-suggestions');
+                    if (suggestions && suggestions.children.length > 0) {
+                        e.preventDefault();
+                        suggestions.children[0].click(); // Select first suggestion
+                    }
+                }
+            });
+        }
+    }
+
+    // Function to create delivery from specific order (called from orders table)
+    function createDeliveryForOrder(orderId) {
+        showAddDeliveryModal(orderId);
+    }
+
+    // Update orders table to include "Create Delivery" button
+    function updateOrdersTableWithDelivery(orders) {
+        // This function should be called when rendering orders table
+        // Add a "Create Delivery" button for orders that can have deliveries
+    }
+
+    // Update the order action buttons in your existing orders table
+    function getOrderActionButtons(order) {
+        const canCreateDelivery = order.status === 'Ordered' || order.status === 'Partial Received';
+
+        return `
+        <div class="flex items-center justify-center space-x-2">
+            <button onclick="viewOrder(${order.order_id})" 
+                    class="text-green-400 hover:text-green-300" title="View">
+                <i class="fas fa-eye"></i>
+            </button>
+            ${canManagePurchasing() ? `
+            <button onclick="editOrder(${order.order_id})" 
+                    class="text-blue-400 hover:text-blue-300" title="Edit">
+                <i class="fas fa-edit"></i>
+            </button>
+            ${canCreateDelivery ? `
+            <button onclick="createDeliveryForOrder(${order.order_id})" 
+                    class="text-purple-400 hover:text-purple-300" title="Create Delivery">
+                <i class="fas fa-truck"></i>
+            </button>
+            ` : ''}
+            <button onclick="updateOrderStatus(${order.order_id})" 
+                    class="text-yellow-400 hover:text-yellow-300" title="Update Status">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button onclick="deleteOrder(${order.order_id})" 
+                    class="text-red-400 hover:text-red-300" title="Delete">
+                <i class="fas fa-trash"></i>
+            </button>
+            ` : ''}
+        </div>
+    `;
+    }
+
+    // ==============================================
+    // ORDER MANAGEMENT FUNCTIONS 
+    // ==============================================
+
     function showAddOrderModal() {
         <?php if (!canManagePurchasing()): ?>
             alert("You don't have permission to manage purchase orders");
@@ -1010,7 +2217,6 @@ include '../../includes/header.php';
                 }
             });
     }
-
 
     function editOrder(orderId) {
         <?php if (!canManagePurchasing()): ?>
@@ -1240,29 +2446,6 @@ include '../../includes/header.php';
 
         // Bisa redirect ke reporting page atau show modal reports
         // window.open('purchasing_reports.php?pon_id=<?php echo $pon_id; ?>', '_blank');
-    }
-
-    // Supplier Management Functions
-    function showAddSupplierModal() {
-        alert("🏢 Add Supplier Modal\n\n" +
-            "• Supplier Name & Contact\n" +
-            "• Address & Contact Info\n" +
-            "• Material Specialization\n" +
-            "• Performance Rating\n" +
-            "Feature in development");
-    }
-
-    function refreshDeliveries() {
-        alert("🔄 Refreshing delivery data...");
-        // AJAX call to refresh deliveries data
-        // fetch('delivery_ajax.php?action=refresh&pon_id=<?php echo $pon_id; ?>')
-        // .then(response => response.json())
-        // .then(data => {
-        //     updateDeliveriesUI(data);
-        // });
-
-        // Simple reload for now
-        location.reload();
     }
 
     function closeModal() {
@@ -1684,15 +2867,7 @@ include '../../includes/header.php';
         }
     }
 
-    function getStatusColor(status) {
-        const colors = {
-            'Completed': 'bg-green-500',
-            'In Progress': 'bg-orange-500',
-            'Pending': 'bg-gray-500',
-            'Rejected': 'bg-red-500'
-        };
-        return colors[status] || 'bg-gray-500';
-    }
+
 
     // Auto-refresh production data every 30 seconds
     setInterval(() => {
@@ -1705,9 +2880,24 @@ include '../../includes/header.php';
     // INITIALIZATION
     // ==============================================
 
-    // Initialize first tab
+    // Initialize when page loads
     document.addEventListener('DOMContentLoaded', function() {
-        switchTab('<?php echo $config['tabs'][0]; ?>');
+        // Initialize supplier autocomplete
+        initSupplierAutocomplete();
+
+        // Load initial data for active tab
+        const activeTab = document.querySelector('.tab-content:not(.hidden)');
+        if (activeTab) {
+            const tabName = activeTab.id.replace('content-', '');
+            switch (tabName) {
+                case 'suppliers':
+                    loadSuppliersList();
+                    break;
+                case 'delivery':
+                    loadDeliveriesList();
+                    break;
+            }
+        }
     });
 </script>
 
@@ -2145,7 +3335,7 @@ include '../../includes/header.php';
 <div id="progressUpdateModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
         <div class="flex items-center justify-between mb-6">
-            <h3 class="text-xl font-bold text-white">Update Task Progress</h3>
+            <h3 class="text-xl font-bold text-white">Update Task Progress</h3> <!-- This will be updated by JS -->
             <button onclick="closeProgressUpdateModal()" class="text-gray-400 hover:text-white">
                 <i class="fas fa-times text-xl"></i>
             </button>
@@ -2208,6 +3398,38 @@ include '../../includes/header.php';
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Task Selection Modal -->
+<div id="taskSelectionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-white">Select Task to Update Progress</h3>
+            <button onclick="closeTaskSelectionModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="mb-4">
+            <div class="flex items-center space-x-2 text-blue-300">
+                <i class="fas fa-info-circle"></i>
+                <span class="text-sm">Select a task to update its progress and status</span>
+            </div>
+        </div>
+
+        <div class="overflow-y-auto max-h-[60vh]">
+            <div id="taskSelectionBody">
+                <!-- Tasks will be loaded here dynamically -->
+            </div>
+        </div>
+
+        <div class="flex justify-end mt-6 pt-4 border-t border-gray-700">
+            <button onclick="closeTaskSelectionModal()"
+                class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                Cancel
+            </button>
+        </div>
     </div>
 </div>
 
@@ -2311,8 +3533,9 @@ include '../../includes/header.php';
                 <div>
                     <label class="block text-gray-300 font-medium mb-2">Supplier Name *</label>
                     <input type="text" id="supplier_name" name="supplier_name" required
-                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
-                        placeholder="Supplier company name">
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500 relative"
+                        placeholder="Type to search suppliers or enter new supplier"
+                        autocomplete="off">
                 </div>
 
                 <div>
@@ -2365,6 +3588,273 @@ include '../../includes/header.php';
                     class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
                     <i class="fas fa-save"></i>
                     <span id="saveOrderButtonText">Save PO</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Supplier Management Modal -->
+<div id="supplierModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-white" id="supplierModalTitle">Add New Supplier</h3>
+            <button onclick="closeSupplierModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <form id="supplierForm" onsubmit="saveSupplier(event)">
+            <input type="hidden" id="supplier_id" name="supplier_id" value="">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Supplier Name *</label>
+                    <input type="text" id="supplier_name" name="supplier_name" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="Company Name">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Contact Person *</label>
+                    <input type="text" id="contact_person" name="contact_person" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="Full Name">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Phone *</label>
+                    <input type="tel" id="phone" name="phone" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="+62 XXX XXXX XXXX">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Email *</label>
+                    <input type="email" id="email" name="email" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="email@company.com">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Address</label>
+                    <textarea id="address" name="address" rows="2"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="Full address"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">City</label>
+                    <input type="text" id="city" name="city"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="City">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Country</label>
+                    <input type="text" id="country" name="country" value="Indonesia"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Tax Number</label>
+                    <input type="text" id="tax_number" name="tax_number"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="NPWP">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Bank Account</label>
+                    <input type="text" id="bank_account" name="bank_account"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="Bank Name - Account Number">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Payment Terms</label>
+                    <input type="text" id="payment_terms" name="payment_terms"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="Net 30, COD, etc.">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Notes</label>
+                    <textarea id="supplier_notes" name="notes" rows="3"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                        placeholder="Additional notes..."></textarea>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3">
+                <button type="button" onclick="closeSupplierModal()"
+                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
+                </button>
+                <button type="submit"
+                    class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                    <i class="fas fa-save"></i>
+                    <span id="saveSupplierButtonText">Save Supplier</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delivery Management Modal - UPDATED -->
+<div id="deliveryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-white" id="deliveryModalTitle">Schedule Delivery</h3>
+            <button onclick="closeDeliveryModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <form id="deliveryForm" onsubmit="saveDelivery(event)">
+            <input type="hidden" id="delivery_id" name="delivery_id" value="">
+            <input type="hidden" id="delivery_order_id" name="order_id" value="">
+
+            <!-- Order Selection Section - Will be dynamically populated -->
+            <div id="deliveryOrderInfo" class="mb-6">
+                <!-- Content will be filled by JavaScript -->
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Delivery Number *</label>
+                    <input type="text" id="delivery_number" name="delivery_number" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="DEL-001">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Delivery Date *</label>
+                    <input type="date" id="delivery_date" name="delivery_date" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Carrier Name *</label>
+                    <input type="text" id="carrier_name" name="carrier_name" required
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Shipping Company">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Driver Name</label>
+                    <input type="text" id="driver_name" name="driver_name"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Driver's Name">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Vehicle Number</label>
+                    <input type="text" id="vehicle_number" name="vehicle_number"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="License Plate">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Tracking Number</label>
+                    <input type="text" id="tracking_number" name="tracking_number"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Tracking Code">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Estimated Arrival</label>
+                    <input type="datetime-local" id="estimated_arrival" name="estimated_arrival"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 font-medium mb-2">Status</label>
+                    <select id="delivery_status" name="status"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="In Transit">In Transit</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Delayed">Delayed</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-gray-300 font-medium mb-2">Notes</label>
+                    <textarea id="delivery_notes" name="notes" rows="3"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Delivery notes..."></textarea>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3">
+                <button type="button" onclick="closeDeliveryModal()"
+                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
+                </button>
+                <button type="submit"
+                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                    <i class="fas fa-save"></i>
+                    <span id="saveDeliveryButtonText">Save Delivery</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Receive Items Modal -->
+<div id="receiveModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-bold text-white">Receive Items</h3>
+            <button onclick="closeReceiveModal()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <form id="receiveForm" onsubmit="receiveItems(event)">
+            <input type="hidden" id="receive_delivery_id" name="delivery_id" value="">
+
+            <div class="mb-4 p-4 bg-green-900 bg-opacity-20 rounded-lg border border-green-700">
+                <h4 class="text-green-300 font-semibold mb-2">Delivery Information</h4>
+                <p class="text-white font-semibold" id="receive_delivery_number">-</p>
+                <p class="text-gray-300 text-sm" id="receive_order_info">-</p>
+                <div class="mt-2 text-sm">
+                    <span class="text-gray-400">Already Received:</span>
+                    <span id="receive_previous" class="text-white ml-2">0</span>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">Received Quantity *</label>
+                <input type="number" id="received_quantity" name="received_quantity" required step="0.01" min="0.01"
+                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                    placeholder="0.00">
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">Receive Date</label>
+                <input type="date" id="receive_date" name="receive_date"
+                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                    value="<?php echo date('Y-m-d'); ?>">
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-gray-300 font-medium mb-2">Notes</label>
+                <textarea id="receive_notes" name="receive_notes" rows="3"
+                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                    placeholder="Receiving notes..."></textarea>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3">
+                <button type="button" onclick="closeReceiveModal()"
+                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
+                </button>
+                <button type="submit"
+                    class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Receive Items</span>
                 </button>
             </div>
         </form>
@@ -2524,6 +4014,39 @@ include '../../includes/header.php';
     .status-option[data-status="Rejected"] {
         border-left-color: #ef4444;
     }
+
+    /* Task Selection Item Hover Effects */
+    .task-selection-item {
+        transition: all 0.2s ease-in-out;
+        border: 1px solid #4b5563;
+    }
+
+    .task-selection-item:hover {
+        border-color: #3b82f6;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Progress bar colors */
+    .bg-green-400 {
+        background-color: #34d399;
+    }
+
+    .bg-green-300 {
+        background-color: #6ee7b7;
+    }
+
+    .bg-yellow-400 {
+        background-color: #fbbf24;
+    }
+
+    .bg-orange-400 {
+        background-color: #fb923c;
+    }
+
+    .bg-red-400 {
+        background-color: #f87171;
+    }
 </style>
 
 <?php
@@ -2584,7 +4107,8 @@ function getDivisionTabs($division, $config, $tasks)
         'Purchasing' => [
             ['id' => 'orders', 'icon' => 'fa-file-invoice', 'label' => 'Purchase Orders', 'count' => ''],
             ['id' => 'suppliers', 'icon' => 'fa-address-book', 'label' => 'Suppliers', 'count' => ''],
-            ['id' => 'deliveries', 'icon' => 'fa-truck-loading', 'label' => 'Deliveries', 'count' => '']
+            ['id' => 'delivery', 'icon' => 'fa-truck', 'label' => 'Delivery Tracking', 'count' => ''],
+            ['id' => 'deliveries', 'icon' => 'fa-clipboard-list', 'label' => 'Delivery Notes', 'count' => '']
         ],
         'Fabrikasi' => [
             ['id' => 'workshop', 'icon' => 'fa-tools', 'label' => 'Workshop Progress', 'count' => ''],
@@ -3054,6 +4578,31 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
         $orders[] = $row;
     }
 
+    // Get suppliers data
+    $suppliers = [];
+    $suppliers_query = "SELECT * FROM suppliers WHERE is_active = 1 ORDER BY supplier_name";
+    $suppliers_result = $conn->query($suppliers_query);
+    if ($suppliers_result) {
+        while ($row = $suppliers_result->fetch_assoc()) {
+            $suppliers[] = $row;
+        }
+    }
+
+    // Get deliveries data
+    $deliveries = [];
+    $deliveries_query = "SELECT d.*, mo.supplier_name, mo.material_type 
+                         FROM deliveries d 
+                         JOIN material_orders mo ON d.order_id = mo.order_id 
+                         WHERE mo.pon_id = ? 
+                         ORDER BY d.delivery_date DESC";
+    $deliveries_stmt = $conn->prepare($deliveries_query);
+    $deliveries_stmt->bind_param("i", $pon_id);
+    $deliveries_stmt->execute();
+    $deliveries_result = $deliveries_stmt->get_result();
+    while ($row = $deliveries_result->fetch_assoc()) {
+        $deliveries[] = $row;
+    }
+
     $html = '';
 
     // Orders Tab
@@ -3167,139 +4716,113 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
         </div>
     </div>';
 
-    // Suppliers Tab
+    // Suppliers Tab - UPDATE DENGAN TABLE LENGKAP
     $html .= '
     <div id="content-suppliers" class="tab-content hidden">
-        <div class="bg-dark-light rounded-xl shadow-xl">
-            <div class="p-6 border-b border-gray-700 flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white">
-                    <i class="fas fa-address-book text-green-400 mr-2"></i>
-                    Supplier Management
-                </h2>
-                <button onclick="showAddSupplierModal()" 
-                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
-                    <i class="fas fa-plus"></i>
-                    <span>Add Supplier</span>
+        <div class="mb-6">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold text-white">Supplier Management</h3>
+                <button onclick="showAddSupplierModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>Add New Supplier</span>
                 </button>
             </div>
+            <p class="text-gray-400 mt-2">Manage your supplier database with complete contact information</p>
+        </div>
 
-            <div class="p-6">
-                <!-- Supplier Statistics - FIXED -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                    <div class="bg-gray-800 p-4 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-white">' . count($material_items) . '</div>
-                        <div class="text-gray-400 text-sm">Total Materials</div>
-                    </div>
-                    <div class="bg-gray-800 p-4 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-white">' . count($orders) . '</div>
-                        <div class="text-gray-400 text-sm">Total POs</div>
-                    </div>
-                    <div class="bg-gray-800 p-4 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-yellow-400">' . count(array_filter($orders, function ($o) {
-        return $o['status'] === 'Ordered';
-    })) . '</div>
-                        <div class="text-gray-400 text-sm">Pending Delivery</div>
-                    </div>
-                    <div class="bg-gray-800 p-4 rounded-lg text-center">
-                        <div class="text-2xl font-bold text-green-400">' . count(array_filter($orders, function ($o) {
-        return $o['status'] === 'Received';
-    })) . '</div>
-                        <div class="text-gray-400 text-sm">Completed</div>
-                    </div>
-                </div>
-
-                <!-- Supplier List -->
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Frequent Suppliers</h3>
-                    <div class="space-y-3" id="suppliersList">
-                        <!-- Dynamic suppliers will be loaded here -->
-                        <div class="text-center py-8 text-gray-500">
-                            <i class="fas fa-address-book text-4xl mb-3 opacity-50"></i>
-                            <p>Supplier management feature in development</p>
-                            <button onclick="showAddSupplierModal()" class="text-green-400 hover:text-green-300 mt-2">
-                                <i class="fas fa-plus-circle mr-1"></i>Add first supplier
-                            </button>
-                        </div>
-                    </div>
-                </div>
+        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">#</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier Info</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Contact</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Details</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Created</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="suppliersTableBody" class="bg-gray-800 divide-y divide-gray-700">
+                        <!-- Suppliers will be loaded via AJAX -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>';
 
-    // Deliveries Tab  
+
+    // Delivery Tracking Tab - UPDATE DENGAN TABLE LENGKAP
     $html .= '
-    <div id="content-deliveries" class="tab-content hidden">
-        <div class="bg-dark-light rounded-xl shadow-xl">
-            <div class="p-6 border-b border-gray-700 flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white">
-                    <i class="fas fa-truck-loading text-green-400 mr-2"></i>
-                    Delivery Tracking
-                </h2>
-                <div class="flex items-center space-x-3">
-                    <span class="text-gray-400 text-sm">' . count($orders) . ' orders total</span>
-                    <button onclick="refreshDeliveries()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
-                        <i class="fas fa-sync-alt"></i>
-                        <span>Refresh</span>
-                    </button>
-                </div>
-            </div>
+<div id="content-delivery" class="tab-content hidden">
+    <div class="mb-6">
+        <div class="flex justify-between items-center">
+            <h3 class="text-xl font-bold text-white">Delivery Tracking</h3>
+            <button onclick="showAddDeliveryModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition">
+                <i class="fas fa-truck"></i>
+                <span>Schedule Delivery</span>
+            </button>
+        </div>
+        <p class="text-gray-400 mt-2">Track all deliveries and manage shipping information</p>
+    </div>
 
-            <div class="p-6">
-                <!-- Delivery Status Overview -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <div class="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-2xl font-bold text-yellow-400">' . count(array_filter($orders, function ($o) {
-        return $o['status'] === 'Ordered';
-    })) . '</div>
-                                <div class="text-yellow-300 text-sm">Ordered</div>
-                            </div>
-                            <i class="fas fa-clock text-yellow-400 text-2xl"></i>
-                        </div>
-                    </div>
-                    <div class="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-2xl font-bold text-blue-400">' . count(array_filter($orders, function ($o) {
-        return $o['status'] === 'Partial Received';
-    })) . '</div>
-                                <div class="text-blue-300 text-sm">Partial Received</div>
-                            </div>
-                            <i class="fas fa-truck-loading text-blue-400 text-2xl"></i>
-                        </div>
-                    </div>
-                    <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-2xl font-bold text-green-400">' . count(array_filter($orders, function ($o) {
-        return $o['status'] === 'Received';
-    })) . '</div>
-                                <div class="text-green-300 text-sm">Received</div>
-                            </div>
-                            <i class="fas fa-check-circle text-green-400 text-2xl"></i>
-                        </div>
-                    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div class="bg-blue-900 bg-opacity-20 p-6 rounded-lg border border-blue-700">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-2xl font-bold text-blue-400" id="scheduledDeliveries">0</div>
+                    <div class="text-blue-300 text-sm">Scheduled</div>
                 </div>
-
-                <!-- Upcoming Deliveries -->
-                <div class="bg-gray-800 rounded-lg p-6 mb-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Upcoming Deliveries</h3>
-                    <div class="space-y-3" id="upcomingDeliveries">' .
-        getUpcomingDeliveriesHTML($orders) .
-        '</div>
-                </div>
-
-                <!-- Recent Deliveries -->
-                <div class="bg-gray-800 rounded-lg p-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Recent Deliveries</h3>
-                    <div class="space-y-3" id="recentDeliveries">' .
-        getRecentDeliveriesHTML($orders) .
-        '</div>
-                </div>
+                <i class="fas fa-clock text-blue-400 text-2xl"></i>
             </div>
         </div>
-    </div>';
+        <div class="bg-yellow-900 bg-opacity-20 p-6 rounded-lg border border-yellow-700">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-2xl font-bold text-yellow-400" id="inTransitDeliveries">0</div>
+                    <div class="text-yellow-300 text-sm">In Transit</div>
+                </div>
+                <i class="fas fa-shipping-fast text-yellow-400 text-2xl"></i>
+            </div>
+        </div>
+        <div class="bg-green-900 bg-opacity-20 p-6 rounded-lg border border-green-700">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-2xl font-bold text-green-400" id="deliveredDeliveries">0</div>
+                    <div class="text-green-300 text-sm">Delivered</div>
+                </div>
+                <i class="fas fa-check-circle text-green-400 text-2xl"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery #</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Order Info</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Carrier & Tracking</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Schedule</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="deliveriesTableBody" class="bg-gray-800 divide-y divide-gray-700">
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p>Loading deliveries data...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>';
+
 
     return $html;
 }

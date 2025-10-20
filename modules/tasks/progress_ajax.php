@@ -26,6 +26,10 @@ try {
             getTaskData($conn);
             break;
 
+        case 'get_tasks':  // TAMBAHKAN INI
+            getTasksByDivision($conn);
+            break;
+
         case 'update':
             updateTaskProgress($conn);
             break;
@@ -72,6 +76,47 @@ function getTaskData($conn)
     }
 
     echo json_encode(['success' => true, 'task' => $task]);
+}
+
+/**
+ * Get tasks by division for progress update selection
+ */
+function getTasksByDivision($conn)
+{
+    if (!isset($_GET['pon_id']) || empty($_GET['pon_id'])) {
+        throw new Exception('PON ID required');
+    }
+
+    $pon_id = (int)$_GET['pon_id'];
+    $division = $_GET['division'] ?? 'Engineering';
+
+    $query = "SELECT 
+                task_id, 
+                task_name, 
+                progress, 
+                status,
+                phase,
+                start_date,
+                finish_date
+              FROM tasks 
+              WHERE pon_id = ? AND responsible_division = ?
+              ORDER BY phase, task_name";
+
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("is", $pon_id, $division);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $tasks = [];
+    while ($row = $result->fetch_assoc()) {
+        $tasks[] = $row;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'tasks' => $tasks,
+        'count' => count($tasks)
+    ]);
 }
 
 /**
