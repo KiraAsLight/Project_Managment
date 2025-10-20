@@ -2428,24 +2428,212 @@ include '../../includes/header.php';
         location.reload();
     }
 
-    // Stub functions for other purchasing actions
+    /**
+     * Track Delivery - Switch ke tab delivery dan highlight
+     */
     function showDeliveryTracking() {
-        alert("📦 Delivery tracking feature in development");
+        console.log('📦 Opening delivery tracking...');
+
+        // Switch ke tab delivery
+        switchTab('delivery');
+
+        // Scroll ke atas
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+
+        // Highlight dengan animation
+        const deliverySection = document.getElementById('content-delivery');
+        if (deliverySection) {
+            deliverySection.classList.add('animate-pulse');
+            setTimeout(() => {
+                deliverySection.classList.remove('animate-pulse');
+            }, 2000);
+        }
+
+        // Refresh data
+        loadDeliveriesList();
+
+        showToast('📦 Delivery tracking loaded', 'info');
     }
 
+    /**
+     * Supplier Management - Switch ke tab suppliers
+     */
     function showSupplierManagement() {
-        alert("🏢 Supplier management feature in development");
+        console.log('🏢 Opening supplier management...');
+
+        // Switch ke tab suppliers
+        switchTab('suppliers');
+
+        // Scroll ke atas
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+
+        // Highlight dengan animation
+        const supplierSection = document.getElementById('content-suppliers');
+        if (supplierSection) {
+            supplierSection.classList.add('animate-pulse');
+            setTimeout(() => {
+                supplierSection.classList.remove('animate-pulse');
+            }, 2000);
+        }
+
+        // Refresh data
+        loadSuppliersList();
+
+        showToast('🏢 Supplier management loaded', 'info');
     }
 
+    /**
+     * Show Order Reports - Generate report modal
+     */
     function showOrderReports() {
-        alert("📊 Generating purchase order reports...\n\n" +
-            "• Total Orders: " + document.querySelectorAll('#content-orders tbody tr').length + "\n" +
-            "• Pending: " + document.querySelectorAll('.bg-yellow-500').length + "\n" +
-            "• Completed: " + document.querySelectorAll('.bg-green-500').length + "\n" +
-            "• Reports feature in development");
+        console.log('📊 Generating purchase order reports...');
 
-        // Bisa redirect ke reporting page atau show modal reports
-        // window.open('purchasing_reports.php?pon_id=<?php echo $pon_id; ?>', '_blank');
+        showLoading('Generating reports...');
+
+        // Fetch report data
+        fetch(`order_ajax.php?action=list&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    displayOrderReportModal(data.orders);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Report error:', error);
+                showToast('Failed to generate report', 'error');
+            });
+    }
+
+    /**
+     * Display Order Report Modal
+     */
+    function displayOrderReportModal(orders) {
+        // Calculate statistics
+        const totalOrders = orders.length;
+        const completedOrders = orders.filter(o => o.status === 'Received').length;
+        const pendingOrders = orders.filter(o => o.status === 'Ordered').length;
+        const partialOrders = orders.filter(o => o.status === 'Partial Received').length;
+
+        const totalQuantity = orders.reduce((sum, o) => sum + parseFloat(o.quantity || 0), 0);
+        const totalValue = orders.length; // Bisa diganti dengan sum of order values jika ada field price
+
+        const modalHTML = `
+        <div id="reportModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold text-white">
+                        <i class="fas fa-chart-bar text-green-400 mr-2"></i>
+                        Purchase Order Reports
+                    </h3>
+                    <button onclick="closeReportModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Report Statistics -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
+                        <div class="text-2xl font-bold text-blue-400">${totalOrders}</div>
+                        <div class="text-blue-300 text-sm">Total Orders</div>
+                    </div>
+                    <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
+                        <div class="text-2xl font-bold text-green-400">${completedOrders}</div>
+                        <div class="text-green-300 text-sm">Completed</div>
+                    </div>
+                    <div class="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
+                        <div class="text-2xl font-bold text-yellow-400">${pendingOrders}</div>
+                        <div class="text-yellow-300 text-sm">Pending</div>
+                    </div>
+                    <div class="bg-purple-900 bg-opacity-20 p-4 rounded-lg border border-purple-700">
+                        <div class="text-2xl font-bold text-purple-400">${partialOrders}</div>
+                        <div class="text-purple-300 text-sm">Partial</div>
+                    </div>
+                </div>
+
+                <!-- Orders Summary Table -->
+                <div class="bg-gray-900 rounded-lg p-4 mb-4">
+                    <h4 class="text-white font-semibold mb-3">Orders Summary by Status</h4>
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-800 text-gray-300">
+                            <tr>
+                                <th class="px-4 py-2 text-left">Status</th>
+                                <th class="px-4 py-2 text-center">Count</th>
+                                <th class="px-4 py-2 text-center">Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <tr>
+                                <td class="px-4 py-2 text-gray-300">Ordered</td>
+                                <td class="px-4 py-2 text-center text-white">${pendingOrders}</td>
+                                <td class="px-4 py-2 text-center text-yellow-400">${totalOrders > 0 ? Math.round((pendingOrders/totalOrders)*100) : 0}%</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-2 text-gray-300">Partial Received</td>
+                                <td class="px-4 py-2 text-center text-white">${partialOrders}</td>
+                                <td class="px-4 py-2 text-center text-blue-400">${totalOrders > 0 ? Math.round((partialOrders/totalOrders)*100) : 0}%</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-2 text-gray-300">Received</td>
+                                <td class="px-4 py-2 text-center text-white">${completedOrders}</td>
+                                <td class="px-4 py-2 text-center text-green-400">${totalOrders > 0 ? Math.round((completedOrders/totalOrders)*100) : 0}%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Export Buttons -->
+                <div class="flex items-center justify-end space-x-3">
+                    <button onclick="exportReportPDF()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-file-pdf"></i>
+                        <span>Export PDF</span>
+                    </button>
+                    <button onclick="exportReportExcel()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-file-excel"></i>
+                        <span>Export Excel</span>
+                    </button>
+                    <button onclick="closeReportModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('reportModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeReportModal() {
+        const modal = document.getElementById('reportModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    function exportReportPDF() {
+        showToast('📄 PDF export feature coming soon', 'info');
+        // Implementasi PDF export bisa pakai library seperti jsPDF
+    }
+
+    function exportReportExcel() {
+        showToast('📊 Excel export feature coming soon', 'info');
+        // Implementasi Excel export bisa pakai library seperti SheetJS
     }
 
     function closeModal() {
@@ -2880,15 +3068,34 @@ include '../../includes/header.php';
     // INITIALIZATION
     // ==============================================
 
-    // Initialize when page loads
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 Page loaded, initializing data...');
+
         // Initialize supplier autocomplete
         initSupplierAutocomplete();
+
+        // PRE-LOAD data untuk tab yang sering diakses
+        // Ini akan mempercepat experience user
+        if (currentDivision === 'Purchasing') {
+            // Load suppliers data di background
+            setTimeout(() => {
+                loadSuppliersList();
+                console.log('✅ Suppliers data pre-loaded');
+            }, 500);
+
+            // Load deliveries data di background
+            setTimeout(() => {
+                loadDeliveriesList();
+                console.log('✅ Deliveries data pre-loaded');
+            }, 1000);
+        }
 
         // Load initial data for active tab
         const activeTab = document.querySelector('.tab-content:not(.hidden)');
         if (activeTab) {
             const tabName = activeTab.id.replace('content-', '');
+            console.log('📌 Active tab:', tabName);
+
             switch (tabName) {
                 case 'suppliers':
                     loadSuppliersList();
@@ -2896,7 +3103,20 @@ include '../../includes/header.php';
                 case 'delivery':
                     loadDeliveriesList();
                     break;
+                case 'drawings':
+                    initDrawingsTab();
+                    break;
             }
+        }
+
+        console.log('✅ Initialization complete');
+    });
+
+    // Handle tab changes dari URL hash (optional, untuk bookmark support)
+    window.addEventListener('hashchange', function() {
+        const hash = window.location.hash.substring(1); // Remove #
+        if (hash) {
+            switchTab(hash);
         }
     });
 </script>
