@@ -3594,14 +3594,486 @@ include '../../includes/header.php';
         }
     }
 
-
-
     // Auto-refresh production data every 30 seconds
     setInterval(() => {
         if (currentDivision === 'Fabrikasi') {
             refreshProductionData();
         }
     }, 30000);
+
+    // ==============================================
+    // LOGISTIK DIVISION - JAVASCRIPT FUNCTIONS
+    // ==============================================
+
+    // ==============================================
+    // SHIPPING STATUS MANAGEMENT
+    // ==============================================
+
+    function showAddShipmentModal() {
+        // Redirect ke Purchasing untuk create delivery dari order
+        if (confirm('Create new shipment from Purchase Order?\n\nYou will be redirected to Purchasing division.')) {
+            window.location.href = 'division_tasks.php?pon_id=<?php echo $pon_id; ?>&division=Purchasing#delivery';
+        }
+    }
+
+    function viewShipmentDetails(deliveryId) {
+        showLoading('Loading shipment details...');
+
+        fetch(`delivery_ajax.php?action=get&id=${deliveryId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showShipmentDetailsModal(data.delivery);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showToast('Error loading shipment details', 'error');
+            });
+    }
+
+    function showShipmentDetailsModal(delivery) {
+        const statusColors = {
+            'Scheduled': 'bg-blue-500',
+            'In Transit': 'bg-yellow-500',
+            'Delivered': 'bg-green-500',
+            'Delayed': 'bg-orange-500',
+            'Cancelled': 'bg-red-500'
+        };
+
+        const modalHTML = `
+        <div id="shipmentDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold text-white">
+                        <i class="fas fa-shipping-fast text-purple-400 mr-2"></i>
+                        Shipment Details
+                    </h3>
+                    <button onclick="closeShipmentDetailsModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Shipment Header -->
+                <div class="bg-purple-900 bg-opacity-20 p-4 rounded-lg mb-6 border border-purple-700">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-gray-400 text-sm">Delivery Number</div>
+                            <div class="text-2xl font-bold text-white font-mono">${delivery.delivery_number}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-gray-400 text-sm">Status</div>
+                            <span class="px-4 py-2 rounded-full text-sm font-bold ${statusColors[delivery.status]} text-white">
+                                ${delivery.status}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Shipment Information Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Order Information -->
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="text-blue-300 font-semibold mb-3 flex items-center">
+                            <i class="fas fa-file-invoice mr-2"></i>Order Information
+                        </h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Order:</span>
+                                <span class="text-white font-mono font-semibold">PO-${delivery.order_id.toString().padStart(4, '0')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Supplier:</span>
+                                <span class="text-white">${escapeHtml(delivery.supplier_name)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Material:</span>
+                                <span class="text-white">${escapeHtml(delivery.material_type)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Quantity:</span>
+                                <span class="text-white font-semibold">${delivery.order_quantity} ${delivery.unit || 'pcs'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Carrier Information -->
+                    <div class="bg-gray-900 p-4 rounded-lg">
+                        <h4 class="text-green-300 font-semibold mb-3 flex items-center">
+                            <i class="fas fa-truck mr-2"></i>Carrier Information
+                        </h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Carrier:</span>
+                                <span class="text-white font-semibold">${escapeHtml(delivery.carrier_name)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Driver:</span>
+                                <span class="text-white">${delivery.driver_name || '-'}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Vehicle:</span>
+                                <span class="text-white">${delivery.vehicle_number || '-'}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Tracking #:</span>
+                                <span class="text-white font-mono">${delivery.tracking_number || '-'}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Schedule Information -->
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-yellow-300 font-semibold mb-3 flex items-center">
+                        <i class="fas fa-calendar-alt mr-2"></i>Schedule & Timeline
+                    </h4>
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                            <div class="text-gray-400 text-sm mb-1">Delivery Date</div>
+                            <div class="text-white font-semibold">${formatDateDisplay(delivery.delivery_date)}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-400 text-sm mb-1">Estimated Arrival</div>
+                            <div class="text-white font-semibold">${delivery.estimated_arrival ? formatDateTimeDisplay(delivery.estimated_arrival) : '-'}</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-400 text-sm mb-1">Actual Arrival</div>
+                            <div class="text-green-400 font-semibold">${delivery.actual_arrival ? formatDateTimeDisplay(delivery.actual_arrival) : '-'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Received Quantity -->
+                ${delivery.status === 'Delivered' ? `
+                <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg mb-6 border border-green-700">
+                    <h4 class="text-green-300 font-semibold mb-3 flex items-center">
+                        <i class="fas fa-check-circle mr-2"></i>Received Information
+                    </h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="text-center">
+                            <div class="text-gray-400 text-sm">Received Quantity</div>
+                            <div class="text-2xl font-bold text-green-400">${delivery.received_quantity || 0}</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-gray-400 text-sm">Completion</div>
+                            <div class="text-2xl font-bold text-green-400">
+                                ${delivery.order_quantity > 0 ? Math.round((delivery.received_quantity / delivery.order_quantity) * 100) : 0}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- Notes -->
+                ${delivery.notes ? `
+                <div class="bg-gray-900 p-4 rounded-lg mb-6">
+                    <h4 class="text-gray-300 font-semibold mb-3 flex items-center">
+                        <i class="fas fa-sticky-note mr-2"></i>Shipment Notes
+                    </h4>
+                    <p class="text-gray-400 text-sm whitespace-pre-wrap">${escapeHtml(delivery.notes)}</p>
+                </div>
+                ` : ''}
+
+                <!-- Action Buttons -->
+                <div class="flex items-center justify-end space-x-3">
+                    ${delivery.status !== 'Delivered' && delivery.status !== 'Cancelled' ? `
+                    <button onclick="closeShipmentDetailsModal(); updateShipmentStatus(${delivery.delivery_id})" 
+                            class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-edit"></i>
+                        <span>Update Status</span>
+                    </button>
+                    <button onclick="closeShipmentDetailsModal(); markAsDelivered(${delivery.delivery_id})" 
+                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Mark as Delivered</span>
+                    </button>
+                    ` : ''}
+                    <button onclick="printShippingLabel(${delivery.delivery_id})" 
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-print"></i>
+                        <span>Print Label</span>
+                    </button>
+                    <button onclick="closeShipmentDetailsModal()" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('shipmentDetailsModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeShipmentDetailsModal() {
+        const modal = document.getElementById('shipmentDetailsModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    function updateShipmentStatus(deliveryId) {
+        showLoading('Loading shipment info...');
+
+        fetch(`delivery_ajax.php?action=get&id=${deliveryId}`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showUpdateStatusModal(data.delivery);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showToast('Error loading shipment data', 'error');
+            });
+    }
+
+    function showUpdateStatusModal(delivery) {
+        const modalHTML = `
+        <div id="updateStatusModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold text-white">Update Shipment Status</h3>
+                    <button onclick="closeUpdateStatusModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <form id="updateStatusForm" onsubmit="submitStatusUpdate(event)">
+                    <input type="hidden" id="update_delivery_id" name="delivery_id" value="${delivery.delivery_id}">
+
+                    <!-- Current Info -->
+                    <div class="mb-4 p-4 bg-purple-900 bg-opacity-20 rounded-lg border border-purple-700">
+                        <h4 class="text-purple-300 font-semibold mb-2">Shipment Info</h4>
+                        <p class="text-white font-semibold">${delivery.delivery_number}</p>
+                        <p class="text-gray-300 text-sm">${escapeHtml(delivery.carrier_name)}</p>
+                        <div class="mt-2 flex items-center space-x-2">
+                            <span class="text-gray-400 text-sm">Current:</span>
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-500 text-white">${delivery.status}</span>
+                        </div>
+                    </div>
+
+                    <!-- Status Selection -->
+                    <div class="mb-4">
+                        <label class="block text-gray-300 font-medium mb-3">Select New Status</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                                <input type="radio" name="status" value="Scheduled" class="hidden" onchange="updateStatusSelection(this)" ${delivery.status === 'Scheduled' ? 'checked' : ''}>
+                                <div class="flex items-center space-x-3 w-full">
+                                    <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                        <div class="w-2 h-2 rounded-full ${delivery.status === 'Scheduled' ? 'bg-blue-400' : 'bg-transparent'}"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-white font-medium">Scheduled</div>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                                <input type="radio" name="status" value="In Transit" class="hidden" onchange="updateStatusSelection(this)" ${delivery.status === 'In Transit' ? 'checked' : ''}>
+                                <div class="flex items-center space-x-3 w-full">
+                                    <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                        <div class="w-2 h-2 rounded-full ${delivery.status === 'In Transit' ? 'bg-blue-400' : 'bg-transparent'}"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-white font-medium">In Transit</div>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                                <input type="radio" name="status" value="Delayed" class="hidden" onchange="updateStatusSelection(this)" ${delivery.status === 'Delayed' ? 'checked' : ''}>
+                                <div class="flex items-center space-x-3 w-full">
+                                    <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                        <div class="w-2 h-2 rounded-full ${delivery.status === 'Delayed' ? 'bg-blue-400' : 'bg-transparent'}"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-white font-medium">Delayed</div>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent status-option">
+                                <input type="radio" name="status" value="Cancelled" class="hidden" onchange="updateStatusSelection(this)" ${delivery.status === 'Cancelled' ? 'checked' : ''}>
+                                <div class="flex items-center space-x-3 w-full">
+                                    <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                        <div class="w-2 h-2 rounded-full ${delivery.status === 'Cancelled' ? 'bg-blue-400' : 'bg-transparent'}"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-white font-medium">Cancelled</div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-6">
+                        <label class="block text-gray-300 font-medium mb-2">Update Notes</label>
+                        <textarea id="status_notes" name="notes" rows="3"
+                            class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500"
+                            placeholder="Reason for status update..."></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center justify-end space-x-3">
+                        <button type="button" onclick="closeUpdateStatusModal()"
+                            class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                            class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                            <i class="fas fa-save"></i>
+                            <span>Update Status</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('updateStatusModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeUpdateStatusModal() {
+        const modal = document.getElementById('updateStatusModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    function submitStatusUpdate(event) {
+        event.preventDefault();
+
+        const formData = new FormData(event.target);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+        submitBtn.disabled = true;
+
+        fetch("delivery_ajax.php?action=update_status", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeUpdateStatusModal();
+                    showToast(data.message, 'success');
+                    refreshShippingList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Update error:', error);
+                showToast("Update failed: " + error.message, 'error');
+            })
+            .finally(() => {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
+
+    function markAsDelivered(deliveryId) {
+        if (!confirm('Mark this shipment as delivered?\n\nThis will update the order status and notify relevant divisions.')) {
+            return;
+        }
+
+        showLoading('Marking as delivered...');
+
+        const formData = new FormData();
+        formData.append('delivery_id', deliveryId);
+        formData.append('status', 'Delivered');
+        formData.append('notes', 'Marked as delivered on ' + new Date().toLocaleString());
+
+        fetch("delivery_ajax.php?action=update_status", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showToast('✅ Shipment marked as delivered successfully!', 'success');
+                    refreshShippingList();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showToast('Failed to mark as delivered: ' + error.message, 'error');
+            });
+    }
+
+    function printShippingLabel(deliveryId) {
+        showToast('📄 Generating shipping label...', 'info');
+
+        // Open print view in new window
+        window.open(`print_shipping_label.php?delivery_id=${deliveryId}`, '_blank', 'width=800,height=600');
+    }
+
+    function filterShipments(filterType) {
+        const rows = document.querySelectorAll('.shipment-row');
+
+        // Update active filter button
+        document.querySelectorAll('[id^="filter-"]').forEach(btn => {
+            btn.classList.remove('bg-purple-600', 'text-white');
+            btn.classList.add('bg-gray-700', 'text-gray-300');
+        });
+
+        const activeBtn = document.getElementById('filter-' + filterType.toLowerCase().replace(' ', ''));
+        if (activeBtn) {
+            activeBtn.classList.add('bg-purple-600', 'text-white');
+            activeBtn.classList.remove('bg-gray-700', 'text-gray-300');
+        }
+
+        // Filter rows
+        rows.forEach(row => {
+            const status = row.getAttribute('data-status');
+            const isOverdue = row.querySelector('.animate-pulse') !== null;
+
+            if (filterType === 'all') {
+                row.style.display = '';
+            } else if (filterType === 'Overdue') {
+                row.style.display = isOverdue ? '' : 'none';
+            } else {
+                row.style.display = status === filterType ? '' : 'none';
+            }
+        });
+    }
+
+    function refreshShippingList() {
+        showToast('🔄 Refreshing shipment data...', 'info');
+        location.reload();
+    }
 
     // ==============================================
     // INITIALIZATION
@@ -3708,6 +4180,8 @@ include '../../includes/header.php';
             echo getPurchasingTabContent($pon_id, $tasks, $config, $material_items);
         } elseif ($division === 'Fabrikasi') {
             echo getFabricationTabContent($pon_id, $tasks, $config);
+        } elseif ($division === 'Logistik') {
+            echo getLogistikTabContent($pon_id, $tasks, $config);
         } else {
             echo getDivisionTabContent($division, $pon_id, $tasks, $config);
         }
@@ -6499,6 +6973,451 @@ function generateFabricationReportsContent($pon_id)
         </div>
     </div>';
 
+    return $html;
+}
+
+// ==============================================    
+// LOGISTIK HELPER FUNCTION
+// ==============================================
+
+function getLogistikTabContent($pon_id, $tasks, $config)
+{
+    global $conn;
+
+    // Get deliveries dengan join ke orders dan PON
+    $deliveries_query = "SELECT 
+                            d.*,
+                            mo.supplier_name,
+                            mo.material_type,
+                            mo.quantity as order_quantity,
+                            mo.unit,
+                            mo.order_id,
+                            p.pon_number,
+                            u.full_name as created_by_name
+                         FROM deliveries d
+                         JOIN material_orders mo ON d.order_id = mo.order_id
+                         JOIN pon p ON mo.pon_id = p.pon_id
+                         LEFT JOIN users u ON d.created_by = u.user_id
+                         WHERE mo.pon_id = ?
+                         ORDER BY d.delivery_date DESC, d.created_at DESC";
+
+    $stmt = $conn->prepare($deliveries_query);
+    $stmt->bind_param("i", $pon_id);
+    $stmt->execute();
+    $deliveries_result = $stmt->get_result();
+    $deliveries = [];
+    while ($row = $deliveries_result->fetch_assoc()) {
+        $deliveries[] = $row;
+    }
+
+    // Calculate statistics
+    $total_deliveries = count($deliveries);
+    $scheduled_count = count(array_filter($deliveries, fn($d) => $d['status'] == 'Scheduled'));
+    $in_transit_count = count(array_filter($deliveries, fn($d) => $d['status'] == 'In Transit'));
+    $delivered_count = count(array_filter($deliveries, fn($d) => $d['status'] == 'Delivered'));
+    $delayed_count = count(array_filter($deliveries, fn($d) => $d['status'] == 'Delayed'));
+
+    // Overdue deliveries (delivery_date sudah lewat tapi belum delivered)
+    $overdue_count = count(array_filter($deliveries, function ($d) {
+        return $d['delivery_date'] < date('Y-m-d') &&
+            !in_array($d['status'], ['Delivered', 'Cancelled']);
+    }));
+
+    $html = '';
+
+    // ========================================
+    // TAB 1: SHIPPING STATUS
+    // ========================================
+    $html .= '
+    <div id="content-shipping" class="tab-content">
+        <!-- Statistics Dashboard -->
+        <div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+            <div class="bg-purple-900 bg-opacity-20 p-4 rounded-lg border border-purple-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-purple-400">' . $total_deliveries . '</div>
+                        <div class="text-purple-300 text-sm">Total Shipments</div>
+                    </div>
+                    <i class="fas fa-box text-purple-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-blue-400">' . $scheduled_count . '</div>
+                        <div class="text-blue-300 text-sm">Scheduled</div>
+                    </div>
+                    <i class="fas fa-clock text-blue-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-yellow-400">' . $in_transit_count . '</div>
+                        <div class="text-yellow-300 text-sm">In Transit</div>
+                    </div>
+                    <i class="fas fa-shipping-fast text-yellow-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-green-400">' . $delivered_count . '</div>
+                        <div class="text-green-300 text-sm">Delivered</div>
+                    </div>
+                    <i class="fas fa-check-circle text-green-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-orange-900 bg-opacity-20 p-4 rounded-lg border border-orange-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-orange-400">' . $delayed_count . '</div>
+                        <div class="text-orange-300 text-sm">Delayed</div>
+                    </div>
+                    <i class="fas fa-exclamation-triangle text-orange-400 text-2xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-red-900 bg-opacity-20 p-4 rounded-lg border border-red-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-2xl font-bold text-red-400">' . $overdue_count . '</div>
+                        <div class="text-red-300 text-sm">Overdue</div>
+                    </div>
+                    <i class="fas fa-exclamation-circle text-red-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons & Filters -->
+        <div class="bg-dark-light rounded-xl shadow-xl mb-6">
+            <div class="p-6 border-b border-gray-700 flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <h2 class="text-xl font-bold text-white">
+                        <i class="fas fa-shipping-fast text-purple-400 mr-2"></i>
+                        Shipping Management
+                    </h2>
+                    
+                    <!-- Quick Filters -->
+                    <div class="flex space-x-2">
+                        <button onclick="filterShipments(\'all\')" 
+                                class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition"
+                                id="filter-all">
+                            All
+                        </button>
+                        <button onclick="filterShipments(\'Scheduled\')" 
+                                class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition"
+                                id="filter-scheduled">
+                            Scheduled
+                        </button>
+                        <button onclick="filterShipments(\'In Transit\')" 
+                                class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition"
+                                id="filter-transit">
+                            In Transit
+                        </button>
+                        <button onclick="filterShipments(\'Overdue\')" 
+                                class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition"
+                                id="filter-overdue">
+                            Overdue
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-3">
+                    <button onclick="showAddShipmentModal()" 
+                            class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <i class="fas fa-plus"></i>
+                        <span>New Shipment</span>
+                    </button>
+                    <button onclick="refreshShippingList()" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Shipments Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-purple-600 text-white text-sm">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Delivery #</th>
+                            <th class="px-4 py-3 text-left">Order Info</th>
+                            <th class="px-4 py-3 text-left">Carrier & Tracking</th>
+                            <th class="px-4 py-3 text-center">Schedule</th>
+                            <th class="px-4 py-3 text-center">Progress</th>
+                            <th class="px-4 py-3 text-center">Status</th>
+                            <th class="px-4 py-3 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="shippingTableBody" class="divide-y divide-gray-700">';
+
+    if (empty($deliveries)) {
+        $html .= '
+                        <tr>
+                            <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                                <i class="fas fa-shipping-fast text-4xl mb-3 opacity-50"></i>
+                                <p>No shipments found</p>
+                                <button onclick="showAddShipmentModal()" class="text-purple-400 hover:text-purple-300 mt-2">
+                                    <i class="fas fa-plus-circle mr-1"></i>Create first shipment
+                                </button>
+                            </td>
+                        </tr>';
+    } else {
+        foreach ($deliveries as $delivery) {
+            $status_colors = [
+                'Scheduled' => 'bg-blue-500',
+                'In Transit' => 'bg-yellow-500',
+                'Delivered' => 'bg-green-500',
+                'Delayed' => 'bg-orange-500',
+                'Cancelled' => 'bg-red-500'
+            ];
+
+            // Calculate progress
+            $progress_percent = 0;
+            if ($delivery['status'] == 'Scheduled') $progress_percent = 10;
+            elseif ($delivery['status'] == 'In Transit') $progress_percent = 50;
+            elseif ($delivery['status'] == 'Delivered') $progress_percent = 100;
+            elseif ($delivery['status'] == 'Delayed') $progress_percent = 30;
+
+            // Check if overdue
+            $is_overdue = $delivery['delivery_date'] < date('Y-m-d') &&
+                !in_array($delivery['status'], ['Delivered', 'Cancelled']);
+
+            $overdue_badge = $is_overdue ?
+                '<span class="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full animate-pulse">OVERDUE</span>' : '';
+
+            $html .= '
+                        <tr class="hover:bg-gray-800 transition shipment-row" data-status="' . $delivery['status'] . '">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center space-x-2">
+                                    <i class="fas fa-box text-purple-400"></i>
+                                    <div>
+                                        <span class="text-white font-mono font-bold">' . htmlspecialchars($delivery['delivery_number']) . '</span>
+                                        ' . $overdue_badge . '
+                                        <div class="text-gray-400 text-xs">
+                                            ' . ($delivery['tracking_number'] ?
+                '<i class="fas fa-barcode mr-1"></i>' . htmlspecialchars($delivery['tracking_number'])
+                : 'No tracking') . '
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="text-white font-semibold">PO-' . str_pad($delivery['order_id'], 4, '0', STR_PAD_LEFT) . '</div>
+                                <div class="text-gray-400 text-sm">' . htmlspecialchars($delivery['supplier_name']) . '</div>
+                                <div class="text-gray-500 text-xs">' . htmlspecialchars($delivery['material_type']) . '</div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="text-white font-medium">' . htmlspecialchars($delivery['carrier_name']) . '</div>
+                                <div class="text-gray-400 text-sm">
+                                    ' . ($delivery['driver_name'] ?
+                '<i class="fas fa-user mr-1"></i>' . htmlspecialchars($delivery['driver_name'])
+                : 'No driver assigned') . '
+                                </div>
+                                <div class="text-gray-500 text-xs">
+                                    ' . ($delivery['vehicle_number'] ?
+                '<i class="fas fa-truck mr-1"></i>' . htmlspecialchars($delivery['vehicle_number'])
+                : '') . '
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <div class="text-white text-sm font-medium">' . format_date_indo($delivery['delivery_date']) . '</div>
+                                ' . ($delivery['estimated_arrival'] ? '
+                                <div class="text-blue-400 text-xs">
+                                    ETA: ' . date('d M H:i', strtotime($delivery['estimated_arrival'])) . '
+                                </div>' : '') . '
+                                ' . ($delivery['actual_arrival'] ? '
+                                <div class="text-green-400 text-xs">
+                                    <i class="fas fa-check mr-1"></i>Arrived: ' . date('d M H:i', strtotime($delivery['actual_arrival'])) . '
+                                </div>' : '') . '
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="text-white font-bold text-lg">' . $progress_percent . '%</span>
+                                    <div class="w-20 bg-gray-700 rounded-full h-2 mt-1">
+                                        <div class="h-2 rounded-full ' . ($is_overdue ? 'bg-red-500' : 'bg-purple-500') . '" 
+                                             style="width: ' . $progress_percent . '%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold ' . $status_colors[$delivery['status']] . ' text-white">
+                                    ' . $delivery['status'] . '
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <button onclick="viewShipmentDetails(' . $delivery['delivery_id'] . ')" 
+                                            class="text-blue-400 hover:text-blue-300" title="View Details">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button onclick="updateShipmentStatus(' . $delivery['delivery_id'] . ')" 
+                                            class="text-yellow-400 hover:text-yellow-300" title="Update Status">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button onclick="printShippingLabel(' . $delivery['delivery_id'] . ')" 
+                                            class="text-green-400 hover:text-green-300" title="Print Label">
+                                        <i class="fas fa-print"></i>
+                                    </button>
+                                    ' . (!in_array($delivery['status'], ['Delivered', 'Cancelled']) ? '
+                                    <button onclick="markAsDelivered(' . $delivery['delivery_id'] . ')" 
+                                            class="text-purple-400 hover:text-purple-300" title="Mark as Delivered">
+                                        <i class="fas fa-check-circle"></i>
+                                    </button>' : '') . '
+                                </div>
+                            </td>
+                        </tr>';
+        }
+    }
+
+    $html .= '
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Quick Info Panel -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-dark-light rounded-xl p-6">
+                <h3 class="text-white font-bold mb-4">
+                    <i class="fas fa-exclamation-triangle text-red-400 mr-2"></i>
+                    Requires Attention
+                </h3>
+                <div id="attentionList" class="space-y-3">
+                    ' . generateAttentionList($deliveries) . '
+                </div>
+            </div>
+            
+            <div class="bg-dark-light rounded-xl p-6">
+                <h3 class="text-white font-bold mb-4">
+                    <i class="fas fa-clock text-blue-400 mr-2"></i>
+                    Upcoming Deliveries (7 Days)
+                </h3>
+                <div id="upcomingList" class="space-y-3">
+                    ' . generateUpcomingList($deliveries) . '
+                </div>
+            </div>
+        </div>
+    </div>';
+
+    // ========================================
+    // TAB 2: LIVE TRACKING (Placeholder for now)
+    // ========================================
+    $html .= '
+    <div id="content-tracking" class="tab-content hidden">
+        <div class="bg-dark-light rounded-xl shadow-xl p-8">
+            <div class="text-center">
+                <i class="fas fa-map-marked-alt text-6xl text-purple-600 mb-4"></i>
+                <h3 class="text-2xl font-bold text-white mb-2">Live Tracking</h3>
+                <p class="text-gray-400 mb-6">Real-time GPS tracking coming soon</p>
+                <p class="text-purple-300 text-sm">This feature will be available in Phase 5</p>
+            </div>
+        </div>
+    </div>';
+
+    // ========================================
+    // TAB 3: DELIVERY NOTES (Placeholder for now)
+    // ========================================
+    $html .= '
+    <div id="content-delivery_notes" class="tab-content hidden">
+        <div class="bg-dark-light rounded-xl shadow-xl p-8">
+            <div class="text-center">
+                <i class="fas fa-file-signature text-6xl text-purple-600 mb-4"></i>
+                <h3 class="text-2xl font-bold text-white mb-2">Delivery Notes</h3>
+                <p class="text-gray-400 mb-6">Document management & POD system</p>
+                <p class="text-purple-300 text-sm">This feature will be available in Phase 4</p>
+            </div>
+        </div>
+    </div>';
+
+    return $html;
+}
+
+// Helper function untuk attention list
+function generateAttentionList($deliveries)
+{
+    $attention_items = array_filter($deliveries, function ($d) {
+        return $d['status'] == 'Delayed' ||
+            ($d['delivery_date'] < date('Y-m-d') && !in_array($d['status'], ['Delivered', 'Cancelled']));
+    });
+
+    if (empty($attention_items)) {
+        return '<div class="text-center py-4 text-gray-500">
+                    <i class="fas fa-check-circle text-2xl mb-2"></i>
+                    <p>All shipments on track</p>
+                </div>';
+    }
+
+    $html = '';
+    foreach (array_slice($attention_items, 0, 5) as $item) {
+        $days_overdue = floor((time() - strtotime($item['delivery_date'])) / (60 * 60 * 24));
+        $html .= '
+        <div class="flex items-center justify-between p-3 bg-red-900 bg-opacity-20 rounded-lg border border-red-700">
+            <div class="flex items-center space-x-3">
+                <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                <div>
+                    <div class="text-white font-semibold text-sm">' . htmlspecialchars($item['delivery_number']) . '</div>
+                    <div class="text-gray-400 text-xs">' . htmlspecialchars($item['supplier_name']) . '</div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="text-red-400 font-bold text-sm">' . $days_overdue . ' days overdue</div>
+                <button onclick="updateShipmentStatus(' . $item['delivery_id'] . ')" 
+                        class="text-yellow-400 hover:text-yellow-300 text-xs">
+                    Update <i class="fas fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </div>';
+    }
+    return $html;
+}
+
+// Helper function untuk upcoming list
+function generateUpcomingList($deliveries)
+{
+    $upcoming = array_filter($deliveries, function ($d) {
+        $days_until = floor((strtotime($d['delivery_date']) - time()) / (60 * 60 * 24));
+        return $days_until >= 0 && $days_until <= 7 && !in_array($d['status'], ['Delivered', 'Cancelled']);
+    });
+
+    usort($upcoming, function ($a, $b) {
+        return strtotime($a['delivery_date']) - strtotime($b['delivery_date']);
+    });
+
+    if (empty($upcoming)) {
+        return '<div class="text-center py-4 text-gray-500">
+                    <i class="fas fa-calendar-day text-2xl mb-2"></i>
+                    <p>No upcoming deliveries</p>
+                </div>';
+    }
+
+    $html = '';
+    foreach (array_slice($upcoming, 0, 5) as $item) {
+        $days_until = floor((strtotime($item['delivery_date']) - time()) / (60 * 60 * 24));
+        $urgency_color = $days_until <= 1 ? 'text-yellow-400' : 'text-blue-400';
+
+        $html .= '
+        <div class="flex items-center justify-between p-3 bg-gray-750 rounded-lg">
+            <div class="flex items-center space-x-3">
+                <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <div>
+                    <div class="text-white font-semibold text-sm">' . htmlspecialchars($item['delivery_number']) . '</div>
+                    <div class="text-gray-400 text-xs">' . htmlspecialchars($item['carrier_name']) . '</div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="text-white font-semibold">' . format_date_indo($item['delivery_date']) . '</div>
+                <div class="' . $urgency_color . ' text-xs">
+                    ' . ($days_until == 0 ? 'Today' : ($days_until == 1 ? 'Tomorrow' : "in $days_until days")) . '
+                </div>
+            </div>
+        </div>';
+    }
     return $html;
 }
 ?>
