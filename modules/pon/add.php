@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Form Add PON (Project Order Notification)
- * Form lengkap untuk membuat PON baru dengan semua fields
+ * Form Add PON (Project Order Notification) - UPDATED WITH DIVISION TIMELINE
+ * Form lengkap untuk membuat PON baru dengan timeline setiap divisi
  */
 
 require_once '../../config/database.php';
@@ -27,7 +27,7 @@ while ($row = $users_result->fetch_assoc()) {
 
 // Proses form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validasi dan sanitasi input
+    // Validasi dan sanitasi input - Basic Information
     $pon_number = sanitize_input($_POST['pon_number']);
     $offer_number = sanitize_input($_POST['offer_number']);
     $subject = sanitize_input($_POST['subject']);
@@ -72,6 +72,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Notes
     $notes = sanitize_input($_POST['notes']);
 
+    // ============================================================
+    // NEW: Division Timeline Input
+    // ============================================================
+
+    // Engineering Division
+    $engineering_start_date = !empty($_POST['engineering_start_date']) ? sanitize_input($_POST['engineering_start_date']) : NULL;
+    $engineering_finish_date = !empty($_POST['engineering_finish_date']) ? sanitize_input($_POST['engineering_finish_date']) : NULL;
+    $engineering_pic = !empty($_POST['engineering_pic']) ? sanitize_input($_POST['engineering_pic']) : 'N/A';
+
+    // Purchasing Division
+    $purchasing_start_date = !empty($_POST['purchasing_start_date']) ? sanitize_input($_POST['purchasing_start_date']) : NULL;
+    $purchasing_finish_date = !empty($_POST['purchasing_finish_date']) ? sanitize_input($_POST['purchasing_finish_date']) : NULL;
+    $purchasing_pic = !empty($_POST['purchasing_pic']) ? sanitize_input($_POST['purchasing_pic']) : 'N/A';
+
+    // Fabrikasi Division
+    $fabrikasi_start_date = !empty($_POST['fabrikasi_start_date']) ? sanitize_input($_POST['fabrikasi_start_date']) : NULL;
+    $fabrikasi_finish_date = !empty($_POST['fabrikasi_finish_date']) ? sanitize_input($_POST['fabrikasi_finish_date']) : NULL;
+    $fabrikasi_pic = !empty($_POST['fabrikasi_pic']) ? sanitize_input($_POST['fabrikasi_pic']) : 'N/A';
+
+    // Logistik Division
+    $logistik_start_date = !empty($_POST['logistik_start_date']) ? sanitize_input($_POST['logistik_start_date']) : NULL;
+    $logistik_finish_date = !empty($_POST['logistik_finish_date']) ? sanitize_input($_POST['logistik_finish_date']) : NULL;
+    $logistik_pic = !empty($_POST['logistik_pic']) ? sanitize_input($_POST['logistik_pic']) : 'N/A';
+
     // Validasi required fields
     if (empty($pon_number)) $errors[] = "PON Number wajib diisi";
     if (empty($subject)) $errors[] = "Subject wajib diisi";
@@ -103,15 +127,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_wps_pqr, require_galvanizing_cert, require_mill_cert_sm490,
             require_inspection_report, require_mill_cert_deck, require_visual_welding,
             require_mill_cert_pipe, require_dimensional_report,
+            engineering_start_date, engineering_finish_date, engineering_pic,
+            purchasing_start_date, purchasing_finish_date, purchasing_pic,
+            fabrikasi_start_date, fabrikasi_finish_date, fabrikasi_pic,
+            logistik_start_date, logistik_finish_date, logistik_pic,
             notes, status, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         $stmt = $conn->prepare($insert_query);
         $status = 'Planning';
         $created_by = $_SESSION['user_id'];
 
         $stmt->bind_param(
-            "sssssssssssssssssssssssssssssssssi",
+            "ssssssssssssssssssssssssssssssssssssssssssssssi",
             $pon_number,
             $offer_number,
             $pon_number,
@@ -143,6 +171,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $require_visual_welding,
             $require_mill_cert_pipe,
             $require_dimensional_report,
+            $engineering_start_date,
+            $engineering_finish_date,
+            $engineering_pic,
+            $purchasing_start_date,
+            $purchasing_finish_date,
+            $purchasing_pic,
+            $fabrikasi_start_date,
+            $fabrikasi_finish_date,
+            $fabrikasi_pic,
+            $logistik_start_date,
+            $logistik_finish_date,
+            $logistik_pic,
             $notes,
             $status,
             $created_by
@@ -158,6 +198,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'Create PON',
                 "Membuat PON baru: {$pon_number}"
             );
+
+            // TODO Phase 3: Kirim Email Notifikasi ke Admin & Divisi
+            // send_pon_notification($conn, $new_pon_id, 'create');
 
             // Redirect ke detail page
             $_SESSION['success_message'] = "PON {$pon_number} berhasil dibuat!";
@@ -443,6 +486,212 @@ include '../../includes/header.php';
                             placeholder="Market target"
                             class="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
                             value="<?php echo isset($_POST['market']) ? htmlspecialchars($_POST['market']) : ''; ?>">
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- NEW SECTION: Division Timeline & Deadline Management -->
+            <!-- ============================================================ -->
+            <div class="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-xl p-6 shadow-xl border-2 border-indigo-500">
+                <div class="flex items-center justify-between mb-4 border-b border-indigo-400 pb-3">
+                    <h2 class="text-xl font-bold text-white">
+                        <i class="fas fa-clock text-yellow-400 mr-2"></i>
+                        Division Timeline & Deadline Management
+                    </h2>
+                    <span class="px-3 py-1 bg-yellow-500 text-black text-xs font-bold rounded-full">
+                        <i class="fas fa-lock mr-1"></i>ADMIN ONLY
+                    </span>
+                </div>
+
+                <div class="bg-yellow-900 bg-opacity-30 border-l-4 border-yellow-500 p-4 mb-6 rounded">
+                    <div class="flex items-start">
+                        <i class="fas fa-info-circle text-yellow-400 text-xl mr-3 mt-1"></i>
+                        <div>
+                            <p class="text-yellow-200 font-semibold mb-1">Panduan Pengisian Timeline:</p>
+                            <ul class="text-yellow-100 text-sm space-y-1">
+                                <li>• <strong>Start Date & Finish Date</strong>: Jika tidak diisi akan tampil sebagai "TBA" (To Be Announced)</li>
+                                <li>• <strong>PIC (Person In Charge)</strong>: Jika kosong default "N/A"</li>
+                                <li>• Timeline ini akan dijadikan <strong>DEADLINE</strong> untuk setiap divisi</li>
+                                <li>• Hanya <strong>Admin</strong> yang bisa mengubah timeline setelah PON dibuat</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    <!-- Engineering Division -->
+                    <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border border-blue-500">
+                        <h3 class="text-lg font-bold text-blue-400 mb-4 flex items-center">
+                            <i class="fas fa-drafting-compass mr-2"></i>
+                            Engineering Division
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-alt mr-1"></i>Start Date
+                                </label>
+                                <input
+                                    type="date"
+                                    name="engineering_start_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                    value="<?php echo isset($_POST['engineering_start_date']) ? $_POST['engineering_start_date'] : ''; ?>">
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-check mr-1"></i>Finish Date (Deadline)
+                                </label>
+                                <input
+                                    type="date"
+                                    name="engineering_finish_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                    value="<?php echo isset($_POST['engineering_finish_date']) ? $_POST['engineering_finish_date'] : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (akan tampil "TBA")</p>
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="fas fa-user mr-1"></i>PIC (Person In Charge)
+                                </label>
+                                <input
+                                    type="text"
+                                    name="engineering_pic"
+                                    placeholder="Nama PIC Engineering"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                                    value="<?php echo isset($_POST['engineering_pic']) ? htmlspecialchars($_POST['engineering_pic']) : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (default: "N/A")</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Purchasing Division -->
+                    <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border border-green-500">
+                        <h3 class="text-lg font-bold text-green-400 mb-4 flex items-center">
+                            <i class="fas fa-shopping-cart mr-2"></i>
+                            Purchasing Division
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-alt mr-1"></i>Start Date
+                                </label>
+                                <input
+                                    type="date"
+                                    name="purchasing_start_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                                    value="<?php echo isset($_POST['purchasing_start_date']) ? $_POST['purchasing_start_date'] : ''; ?>">
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-check mr-1"></i>Finish Date (Deadline)
+                                </label>
+                                <input
+                                    type="date"
+                                    name="purchasing_finish_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                                    value="<?php echo isset($_POST['purchasing_finish_date']) ? $_POST['purchasing_finish_date'] : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (akan tampil "TBA")</p>
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="fas fa-user mr-1"></i>PIC (Person In Charge)
+                                </label>
+                                <input
+                                    type="text"
+                                    name="purchasing_pic"
+                                    placeholder="Nama PIC Purchasing"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                                    value="<?php echo isset($_POST['purchasing_pic']) ? htmlspecialchars($_POST['purchasing_pic']) : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (default: "N/A")</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fabrikasi Division -->
+                    <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border border-orange-500">
+                        <h3 class="text-lg font-bold text-orange-400 mb-4 flex items-center">
+                            <i class="fas fa-hammer mr-2"></i>
+                            Fabrikasi Division
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-alt mr-1"></i>Start Date
+                                </label>
+                                <input
+                                    type="date"
+                                    name="fabrikasi_start_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500"
+                                    value="<?php echo isset($_POST['fabrikasi_start_date']) ? $_POST['fabrikasi_start_date'] : ''; ?>">
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-check mr-1"></i>Finish Date (Deadline)
+                                </label>
+                                <input
+                                    type="date"
+                                    name="fabrikasi_finish_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500"
+                                    value="<?php echo isset($_POST['fabrikasi_finish_date']) ? $_POST['fabrikasi_finish_date'] : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (akan tampil "TBA")</p>
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="fas fa-user mr-1"></i>PIC (Person In Charge)
+                                </label>
+                                <input
+                                    type="text"
+                                    name="fabrikasi_pic"
+                                    placeholder="Nama PIC Fabrikasi"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500"
+                                    value="<?php echo isset($_POST['fabrikasi_pic']) ? htmlspecialchars($_POST['fabrikasi_pic']) : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (default: "N/A")</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Logistik Division -->
+                    <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border border-purple-500">
+                        <h3 class="text-lg font-bold text-purple-400 mb-4 flex items-center">
+                            <i class="fas fa-truck mr-2"></i>
+                            Logistik Division
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-alt mr-1"></i>Start Date
+                                </label>
+                                <input
+                                    type="date"
+                                    name="logistik_start_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500"
+                                    value="<?php echo isset($_POST['logistik_start_date']) ? $_POST['logistik_start_date'] : ''; ?>">
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="far fa-calendar-check mr-1"></i>Finish Date (Deadline)
+                                </label>
+                                <input
+                                    type="date"
+                                    name="logistik_finish_date"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500"
+                                    value="<?php echo isset($_POST['logistik_finish_date']) ? $_POST['logistik_finish_date'] : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (akan tampil "TBA")</p>
+                            </div>
+                            <div>
+                                <label class="block text-gray-300 font-medium mb-2">
+                                    <i class="fas fa-user mr-1"></i>PIC (Person In Charge)
+                                </label>
+                                <input
+                                    type="text"
+                                    name="logistik_pic"
+                                    placeholder="Nama PIC Logistik"
+                                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500"
+                                    value="<?php echo isset($_POST['logistik_pic']) ? htmlspecialchars($_POST['logistik_pic']) : ''; ?>">
+                                <p class="text-gray-400 text-xs mt-1">Kosongkan jika belum ditentukan (default: "N/A")</p>
+                            </div>
+                        </div>
                     </div>
 
                 </div>
