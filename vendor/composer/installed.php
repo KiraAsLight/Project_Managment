@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => '__root__',
-        'pretty_version' => '1.0.0+no-version-set',
-        'version' => '1.0.0.0',
-        'reference' => null,
+        'pretty_version' => 'dev-master',
+        'version' => 'dev-master',
+        'reference' => 'a4364e7eb57a8b314609cc98a9bc881178ede216',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -11,9 +11,9 @@
     ),
     'versions' => array(
         '__root__' => array(
-            'pretty_version' => '1.0.0+no-version-set',
-            'version' => '1.0.0.0',
-            'reference' => null,
+            'pretty_version' => 'dev-master',
+            'version' => 'dev-master',
+            'reference' => 'a4364e7eb57a8b314609cc98a9bc881178ede216',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -52,6 +52,15 @@
             'reference' => '728434227fe21be27ff6d86621a1b13107a2562c',
             'type' => 'library',
             'install_path' => __DIR__ . '/../markbaker/matrix',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'phpmailer/phpmailer' => array(
+            'pretty_version' => 'v7.0.0',
+            'version' => '7.0.0.0',
+            'reference' => 'c7111310c6116ba508a6a170a89eaaed2129bd42',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../phpmailer/phpmailer',
             'aliases' => array(),
             'dev_requirement' => false,
         ),

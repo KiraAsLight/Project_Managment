@@ -1,7 +1,7 @@
 <?php
 
 /**
- * PON Detail Page
+ * PON Detail Page - WITH DIVISION TIMELINE DISPLAY
  * Menampilkan informasi lengkap PON dengan timeline visualization
  */
 
@@ -293,6 +293,443 @@ include '../../includes/header.php';
             </div>
 
         </div>
+
+        <!-- ============================================================ -->
+        <!-- NEW SECTION: Division Timeline & Deadline Display -->
+        <!-- ============================================================ -->
+
+        <!-- Division Timeline & Deadlines -->
+        <div class="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-xl p-6 shadow-xl border-2 border-indigo-500 mb-8">
+            <div class="flex items-center justify-between mb-6 border-b border-indigo-400 pb-3">
+                <h2 class="text-xl font-bold text-white">
+                    <i class="fas fa-clock text-yellow-400 mr-2"></i>
+                    Division Timeline & Deadlines
+                </h2>
+                <?php if (hasRole('Admin')): ?>
+                    <a href="edit.php?id=<?php echo $pon_id; ?>#timeline-section"
+                        class="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg flex items-center space-x-2 text-sm font-bold transition">
+                        <i class="fas fa-edit"></i>
+                        <span>Edit Timeline</span>
+                    </a>
+                <?php endif; ?>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                <!-- Engineering Division Timeline -->
+                <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border-l-4 border-blue-500">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-blue-400 flex items-center">
+                            <i class="fas fa-drafting-compass mr-2"></i>
+                            Engineering
+                        </h3>
+                        <?php
+                        // Check if deadline is near (7 days) or passed
+                        $eng_deadline_status = '';
+                        $eng_badge_class = 'bg-gray-600';
+
+                        if (!empty($pon['engineering_finish_date'])) {
+                            $days_remaining = days_difference($pon['engineering_finish_date']);
+
+                            if ($days_remaining < 0) {
+                                $eng_deadline_status = 'OVERDUE';
+                                $eng_badge_class = 'bg-red-600 animate-pulse';
+                            } elseif ($days_remaining <= 7) {
+                                $eng_deadline_status = 'URGENT';
+                                $eng_badge_class = 'bg-orange-600';
+                            } else {
+                                $eng_deadline_status = 'ON TRACK';
+                                $eng_badge_class = 'bg-green-600';
+                            }
+                        }
+                        ?>
+                        <?php if ($eng_deadline_status): ?>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold text-white <?php echo $eng_badge_class; ?>">
+                                <?php echo $eng_deadline_status; ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="space-y-3">
+                        <!-- Start Date -->
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-blue-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-alt text-blue-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Start Date</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    echo !empty($pon['engineering_start_date'])
+                                        ? format_date_indo($pon['engineering_start_date'])
+                                        : '<span class="text-gray-500">TBA</span>';
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Finish Date / Deadline -->
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-blue-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-check text-blue-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Deadline</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    if (!empty($pon['engineering_finish_date'])) {
+                                        echo format_date_indo($pon['engineering_finish_date']);
+
+                                        // Show days remaining
+                                        $days_remaining = days_difference($pon['engineering_finish_date']);
+                                        if ($days_remaining >= 0) {
+                                            echo ' <span class="text-xs text-gray-400">(' . $days_remaining . ' days left)</span>';
+                                        } else {
+                                            echo ' <span class="text-xs text-red-400">(' . abs($days_remaining) . ' days overdue)</span>';
+                                        }
+                                    } else {
+                                        echo '<span class="text-gray-500">TBA</span>';
+                                    }
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- PIC -->
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-blue-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="fas fa-user text-blue-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">PIC</p>
+                                <p class="text-white font-semibold">
+                                    <?php echo htmlspecialchars($pon['engineering_pic'] ?? 'N/A'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Purchasing Division Timeline -->
+                <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border-l-4 border-green-500">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-green-400 flex items-center">
+                            <i class="fas fa-shopping-cart mr-2"></i>
+                            Purchasing
+                        </h3>
+                        <?php
+                        $pur_deadline_status = '';
+                        $pur_badge_class = 'bg-gray-600';
+
+                        if (!empty($pon['purchasing_finish_date'])) {
+                            $days_remaining = days_difference($pon['purchasing_finish_date']);
+
+                            if ($days_remaining < 0) {
+                                $pur_deadline_status = 'OVERDUE';
+                                $pur_badge_class = 'bg-red-600 animate-pulse';
+                            } elseif ($days_remaining <= 7) {
+                                $pur_deadline_status = 'URGENT';
+                                $pur_badge_class = 'bg-orange-600';
+                            } else {
+                                $pur_deadline_status = 'ON TRACK';
+                                $pur_badge_class = 'bg-green-600';
+                            }
+                        }
+                        ?>
+                        <?php if ($pur_deadline_status): ?>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold text-white <?php echo $pur_badge_class; ?>">
+                                <?php echo $pur_deadline_status; ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-green-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-alt text-green-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Start Date</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    echo !empty($pon['purchasing_start_date'])
+                                        ? format_date_indo($pon['purchasing_start_date'])
+                                        : '<span class="text-gray-500">TBA</span>';
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-green-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-check text-green-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Deadline</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    if (!empty($pon['purchasing_finish_date'])) {
+                                        echo format_date_indo($pon['purchasing_finish_date']);
+
+                                        $days_remaining = days_difference($pon['purchasing_finish_date']);
+                                        if ($days_remaining >= 0) {
+                                            echo ' <span class="text-xs text-gray-400">(' . $days_remaining . ' days left)</span>';
+                                        } else {
+                                            echo ' <span class="text-xs text-red-400">(' . abs($days_remaining) . ' days overdue)</span>';
+                                        }
+                                    } else {
+                                        echo '<span class="text-gray-500">TBA</span>';
+                                    }
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-green-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="fas fa-user text-green-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">PIC</p>
+                                <p class="text-white font-semibold">
+                                    <?php echo htmlspecialchars($pon['purchasing_pic'] ?? 'N/A'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fabrikasi Division Timeline -->
+                <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border-l-4 border-orange-500">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-orange-400 flex items-center">
+                            <i class="fas fa-hammer mr-2"></i>
+                            Fabrikasi
+                        </h3>
+                        <?php
+                        $fab_deadline_status = '';
+                        $fab_badge_class = 'bg-gray-600';
+
+                        if (!empty($pon['fabrikasi_finish_date'])) {
+                            $days_remaining = days_difference($pon['fabrikasi_finish_date']);
+
+                            if ($days_remaining < 0) {
+                                $fab_deadline_status = 'OVERDUE';
+                                $fab_badge_class = 'bg-red-600 animate-pulse';
+                            } elseif ($days_remaining <= 7) {
+                                $fab_deadline_status = 'URGENT';
+                                $fab_badge_class = 'bg-orange-600';
+                            } else {
+                                $fab_deadline_status = 'ON TRACK';
+                                $fab_badge_class = 'bg-green-600';
+                            }
+                        }
+                        ?>
+                        <?php if ($fab_deadline_status): ?>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold text-white <?php echo $fab_badge_class; ?>">
+                                <?php echo $fab_deadline_status; ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-orange-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-alt text-orange-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Start Date</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    echo !empty($pon['fabrikasi_start_date'])
+                                        ? format_date_indo($pon['fabrikasi_start_date'])
+                                        : '<span class="text-gray-500">TBA</span>';
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-orange-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-check text-orange-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Deadline</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    if (!empty($pon['fabrikasi_finish_date'])) {
+                                        echo format_date_indo($pon['fabrikasi_finish_date']);
+
+                                        $days_remaining = days_difference($pon['fabrikasi_finish_date']);
+                                        if ($days_remaining >= 0) {
+                                            echo ' <span class="text-xs text-gray-400">(' . $days_remaining . ' days left)</span>';
+                                        } else {
+                                            echo ' <span class="text-xs text-red-400">(' . abs($days_remaining) . ' days overdue)</span>';
+                                        }
+                                    } else {
+                                        echo '<span class="text-gray-500">TBA</span>';
+                                    }
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-orange-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="fas fa-user text-orange-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">PIC</p>
+                                <p class="text-white font-semibold">
+                                    <?php echo htmlspecialchars($pon['fabrikasi_pic'] ?? 'N/A'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logistik Division Timeline -->
+                <div class="bg-gray-800 bg-opacity-50 rounded-lg p-5 border-l-4 border-purple-500">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-purple-400 flex items-center">
+                            <i class="fas fa-truck mr-2"></i>
+                            Logistik
+                        </h3>
+                        <?php
+                        $log_deadline_status = '';
+                        $log_badge_class = 'bg-gray-600';
+
+                        if (!empty($pon['logistik_finish_date'])) {
+                            $days_remaining = days_difference($pon['logistik_finish_date']);
+
+                            if ($days_remaining < 0) {
+                                $log_deadline_status = 'OVERDUE';
+                                $log_badge_class = 'bg-red-600 animate-pulse';
+                            } elseif ($days_remaining <= 7) {
+                                $log_deadline_status = 'URGENT';
+                                $log_badge_class = 'bg-orange-600';
+                            } else {
+                                $log_deadline_status = 'ON TRACK';
+                                $log_badge_class = 'bg-green-600';
+                            }
+                        }
+                        ?>
+                        <?php if ($log_deadline_status): ?>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold text-white <?php echo $log_badge_class; ?>">
+                                <?php echo $log_deadline_status; ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-purple-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-alt text-purple-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Start Date</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    echo !empty($pon['logistik_start_date'])
+                                        ? format_date_indo($pon['logistik_start_date'])
+                                        : '<span class="text-gray-500">TBA</span>';
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-purple-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="far fa-calendar-check text-purple-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">Deadline</p>
+                                <p class="text-white font-semibold">
+                                    <?php
+                                    if (!empty($pon['logistik_finish_date'])) {
+                                        echo format_date_indo($pon['logistik_finish_date']);
+
+                                        $days_remaining = days_difference($pon['logistik_finish_date']);
+                                        if ($days_remaining >= 0) {
+                                            echo ' <span class="text-xs text-gray-400">(' . $days_remaining . ' days left)</span>';
+                                        } else {
+                                            echo ' <span class="text-xs text-red-400">(' . abs($days_remaining) . ' days overdue)</span>';
+                                        }
+                                    } else {
+                                        echo '<span class="text-gray-500">TBA</span>';
+                                    }
+                                    ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-purple-500 bg-opacity-20 rounded-lg p-2">
+                                <i class="fas fa-user text-purple-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-400">PIC</p>
+                                <p class="text-white font-semibold">
+                                    <?php echo htmlspecialchars($pon['logistik_pic'] ?? 'N/A'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Timeline Summary Bar (Optional - Visual Progress) -->
+            <div class="mt-6 bg-gray-800 bg-opacity-50 rounded-lg p-4">
+                <h4 class="text-sm font-semibold text-gray-400 mb-3">Timeline Overview</h4>
+                <div class="grid grid-cols-4 gap-2">
+                    <?php
+                    $divisions = [
+                        ['name' => 'Engineering', 'date' => $pon['engineering_finish_date'], 'color' => 'blue'],
+                        ['name' => 'Purchasing', 'date' => $pon['purchasing_finish_date'], 'color' => 'green'],
+                        ['name' => 'Fabrikasi', 'date' => $pon['fabrikasi_finish_date'], 'color' => 'orange'],
+                        ['name' => 'Logistik', 'date' => $pon['logistik_finish_date'], 'color' => 'purple']
+                    ];
+
+                    foreach ($divisions as $div):
+                        $status_icon = '⏱️';
+                        $status_text = 'TBA';
+
+                        if (!empty($div['date'])) {
+                            $days = days_difference($div['date']);
+                            if ($days < 0) {
+                                $status_icon = '🔴';
+                                $status_text = 'Overdue';
+                            } elseif ($days <= 7) {
+                                $status_icon = '🟡';
+                                $status_text = 'Urgent';
+                            } else {
+                                $status_icon = '🟢';
+                                $status_text = 'On Track';
+                            }
+                        }
+                    ?>
+                        <div class="bg-gray-700 rounded p-2 text-center">
+                            <div class="text-2xl mb-1"><?php echo $status_icon; ?></div>
+                            <p class="text-xs text-gray-400"><?php echo $div['name']; ?></p>
+                            <p class="text-xs font-semibold text-white"><?php echo $status_text; ?></p>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- Admin Note -->
+            <?php if (!hasRole('Admin')): ?>
+                <div class="mt-4 bg-blue-900 bg-opacity-30 border-l-4 border-blue-500 p-3 rounded">
+                    <p class="text-blue-200 text-sm">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Timeline ini adalah <strong>deadline reminder</strong> untuk divisi Anda. Hubungi Admin jika ada perubahan jadwal.
+                    </p>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- END NEW SECTION: Division Timeline -->
 
         <!-- Timeline Visualization (Gantt-like) -->
         <div class="bg-dark-light rounded-xl p-6 shadow-xl mb-8">
