@@ -1,0 +1,303 @@
+<?php
+
+/**
+ * Email Mailer Class
+ * Menggunakan PHP native mail() atau PHPMailer
+ * 
+ * INSTALLATION (jika pakai PHPMailer):
+ * 1. Download PHPMailer: https://github.com/PHPMailer/PHPMailer
+ * 2. Extract ke folder 'vendor/phpmailer/'
+ * 3. Set USE_PHPMAILER = true
+ */
+
+require_once __DIR__ . '/../config/email_config.php';
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+// Set true jika mau pakai PHPMailer (lebih reliable)
+// Set false jika mau pakai PHP native mail() (simple)
+define('USE_PHPMAILER', true); // Default: native mail()
+
+// PHPMailer Path (jika USE_PHPMAILER = true)
+define('PHPMAILER_PATH', __DIR__ . '/../vendor/phpmailer/src');
+
+// ============================================================
+// EMAIL MAILER CLASS
+// ============================================================
+
+class EmailMailer
+{
+
+    private $conn;
+    private $errors = [];
+
+    public function __construct($db_connection)
+    {
+        $this->conn = $db_connection;
+
+        // Validate config
+        if (!validate_email_config()) {
+            $this->errors[] = "Email configuration invalid. Check email_config.php";
+        }
+    }
+
+    /**
+     * Send email menggunakan method yang dipilih
+     * 
+     * @param array $to_emails Array of recipient emails
+     * @param string $subject Email subject
+     * @param string $html_body HTML email body
+     * @param array $options Optional settings (cc, bcc, attachments)
+     * @return bool Success status
+     */
+    public function send($to_emails, $subject, $html_body, $options = [])
+    {
+        // Check if email enabled
+        if (!EMAIL_ENABLED) {
+            error_log("Email skipped: EMAIL_ENABLED = false");
+            return true; // Return true agar tidak break flow
+        }
+
+        // Debug mode
+        if (EMAIL_DEBUG_MODE) {
+            $this->debug_email($to_emails, $subject, $html_body);
+            return true;
+        }
+
+        // Validate recipients
+        if (empty($to_emails)) {
+            $this->errors[] = "No recipients specified";
+            return false;
+        }
+
+        // Ensure array
+        if (!is_array($to_emails)) {
+            $to_emails = [$to_emails];
+        }
+
+        // Filter valid emails
+        $to_emails = array_filter($to_emails, function ($email) {
+            return filter_var($email, FILTER_VALIDATE_EMAIL);
+        });
+
+        if (empty($to_emails)) {
+            $this->errors[] = "No valid email addresses";
+            return false;
+        }
+
+        // Choose mailer
+        if (USE_PHPMAILER && file_exists(PHPMAILER_PATH . 'PHPMailer.php')) {
+            return $this->send_with_phpmailer($to_emails, $subject, $html_body, $options);
+        } else {
+            return $this->send_with_native($to_emails, $subject, $html_body, $options);
+        }
+    }
+
+    /**
+     * Send email menggunakan PHPMailer
+     */
+    private function send_with_phpmailer($to_emails, $subject, $html_body, $options)
+    {
+        try {
+            require_once PHPMAILER_PATH . 'PHPMailer.php';
+            require_once PHPMAILER_PATH . 'SMTP.php';
+            require_once PHPMAILER_PATH . 'Exception.php';
+
+            $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+
+            // Server settings
+            $mail->isSMTP();
+            $mail->Host = SMTP_HOST;
+            $mail->SMTPAuth = SMTP_AUTH;
+            $mail->Username = SMTP_USERNAME;
+            $mail->Password = SMTP_PASSWORD;
+            $mail->SMTPSecure = SMTP_SECURE;
+            $mail->Port = SMTP_PORT;
+
+            // Charset
+            $mail->CharSet = 'UTF-8';
+
+            // Recipients
+            $mail->setFrom(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
+
+            foreach ($to_emails as $email) {
+                $mail->addAddress($email);
+            }
+
+            // Reply-To
+            if (defined('SMTP_REPLY_TO')) {
+                $mail->addReplyTo(SMTP_REPLY_TO);
+            }
+
+            // CC & BCC (optional)
+            if (!empty($options['cc'])) {
+                foreach ($options['cc'] as $cc_email) {
+                    $mail->addCC($cc_email);
+                }
+            }
+
+            if (!empty($options['bcc'])) {
+                foreach ($options['bcc'] as $bcc_email) {
+                    $mail->addBCC($bcc_email);
+                }
+            }
+
+            // Content
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = $html_body;
+            $mail->AltBody = strip_tags($html_body); // Plain text fallback
+
+            // Send
+            $mail->send();
+
+            // Log success
+            $this->log_email_sent($to_emails, $subject, true);
+
+            return true;
+        } catch (Exception $e) {
+            $this->errors[] = "PHPMailer Error: {$mail->ErrorInfo}";
+            $this->log_email_sent($to_emails, $subject, false, $mail->ErrorInfo);
+            error_log("Email send failed: " . $mail->ErrorInfo);
+            return false;
+        }
+    }
+
+    /**
+     * Send email menggunakan PHP native mail()
+     * Simple tapi kurang reliable untuk production
+     */
+    private function send_with_native($to_emails, $subject, $html_body, $options)
+    {
+        // Headers
+        $headers = [];
+        $headers[] = "MIME-Version: 1.0";
+        $headers[] = "Content-type: text/html; charset=UTF-8";
+        $headers[] = "From: " . SMTP_FROM_NAME . " <" . SMTP_FROM_EMAIL . ">";
+
+        if (defined('SMTP_REPLY_TO')) {
+            $headers[] = "Reply-To: " . SMTP_REPLY_TO;
+        }
+
+        // CC (optional)
+        if (!empty($options['cc'])) {
+            $headers[] = "Cc: " . implode(', ', $options['cc']);
+        }
+
+        // BCC (optional)
+        if (!empty($options['bcc'])) {
+            $headers[] = "Bcc: " . implode(', ', $options['bcc']);
+        }
+
+        $headers[] = "X-Mailer: PHP/" . phpversion();
+
+        // Join headers
+        $headers_string = implode("\r\n", $headers);
+
+        // Send to each recipient
+        $success_count = 0;
+        foreach ($to_emails as $to_email) {
+            if (mail($to_email, $subject, $html_body, $headers_string)) {
+                $success_count++;
+            } else {
+                error_log("Failed to send email to: $to_email");
+            }
+        }
+
+        $all_success = ($success_count === count($to_emails));
+
+        // Log
+        $this->log_email_sent(
+            $to_emails,
+            $subject,
+            $all_success,
+            $all_success ? null : "Sent $success_count/" . count($to_emails)
+        );
+
+        return $all_success;
+    }
+
+    /**
+     * Debug mode - print email info tanpa kirim
+     */
+    private function debug_email($to_emails, $subject, $html_body)
+    {
+        echo "<div style='background: #f0f0f0; padding: 20px; margin: 10px; border: 2px solid #333;'>";
+        echo "<h3>📧 EMAIL DEBUG MODE</h3>";
+        echo "<p><strong>To:</strong> " . implode(', ', $to_emails) . "</p>";
+        echo "<p><strong>Subject:</strong> $subject</p>";
+        echo "<hr>";
+        echo "<div>$html_body</div>";
+        echo "</div>";
+
+        error_log("EMAIL DEBUG: To=" . implode(',', $to_emails) . " Subject=$subject");
+    }
+
+    /**
+     * Log email activity ke database (optional)
+     */
+    private function log_email_sent($recipients, $subject, $success, $error_message = null)
+    {
+        // Optional: Create email_logs table untuk tracking
+        // Untuk sekarang, cukup log ke error_log
+
+        $status = $success ? 'SUCCESS' : 'FAILED';
+        $log_message = "Email $status: To=" . implode(',', $recipients) .
+            " Subject='$subject'";
+
+        if ($error_message) {
+            $log_message .= " Error: $error_message";
+        }
+
+        error_log($log_message);
+
+        // TODO: Insert ke email_logs table jika ada
+        /*
+        $query = "INSERT INTO email_logs 
+                  (recipients, subject, status, error_message, sent_at) 
+                  VALUES (?, ?, ?, ?, NOW())";
+        $stmt = $this->conn->prepare($query);
+        $recipients_str = implode(',', $recipients);
+        $stmt->bind_param("ssss", $recipients_str, $subject, $status, $error_message);
+        $stmt->execute();
+        */
+    }
+
+    /**
+     * Get error messages
+     */
+    public function get_errors()
+    {
+        return $this->errors;
+    }
+
+    /**
+     * Check if has errors
+     */
+    public function has_errors()
+    {
+        return !empty($this->errors);
+    }
+}
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
+/**
+ * Quick send email function (wrapper)
+ * 
+ * @param object $conn Database connection
+ * @param array|string $to_emails Recipient(s)
+ * @param string $subject Email subject
+ * @param string $html_body HTML email body
+ * @return bool Success status
+ */
+function send_email($conn, $to_emails, $subject, $html_body)
+{
+    $mailer = new EmailMailer($conn);
+    return $mailer->send($to_emails, $subject, $html_body);
+}
+?>

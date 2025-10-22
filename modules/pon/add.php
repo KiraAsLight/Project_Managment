@@ -8,6 +8,7 @@
 require_once '../../config/database.php';
 require_once '../../config/config.php';
 require_once '../../includes/functions.php';
+require_once '../../includes/email_notifications.php';
 
 require_role(['Admin']);
 
@@ -139,53 +140,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $created_by = $_SESSION['user_id'];
 
         $stmt->bind_param(
-            "ssssssssssssssssssssssssssssssssssssssssssssssi",
-            $pon_number,
-            $offer_number,
-            $pon_number,
-            $subject,
-            $project_name,
-            $qty_configuration,
-            $scope_of_work,
-            $client_name,
-            $project_owner,
-            $contract_number,
-            $contract_date,
-            $contract_address,
-            $director_name,
-            $pic_name,
-            $pic_contact,
-            $project_start_date,
-            $project_manager,
-            $market,
-            $material_steel_supplier,
-            $material_bolt_supplier,
-            $material_anchorage_supplier,
-            $material_bearing_supplier,
-            $material_deck_supplier,
-            $require_wps_pqr,
-            $require_galvanizing_cert,
-            $require_mill_cert_sm490,
-            $require_inspection_report,
-            $require_mill_cert_deck,
-            $require_visual_welding,
-            $require_mill_cert_pipe,
-            $require_dimensional_report,
-            $engineering_start_date,
-            $engineering_finish_date,
-            $engineering_pic,
-            $purchasing_start_date,
-            $purchasing_finish_date,
-            $purchasing_pic,
-            $fabrikasi_start_date,
-            $fabrikasi_finish_date,
-            $fabrikasi_pic,
-            $logistik_start_date,
-            $logistik_finish_date,
-            $logistik_pic,
-            $notes,
-            $status,
-            $created_by
+            "sssssssssssssssssssssssssssssssssssssssssssssi",  // ← 45 x 's' + 1 x 'i'
+            $pon_number,              // 1
+            $offer_number,            // 2
+            $pon_number,              // 3 (job_number)
+            $subject,                 // 4
+            $project_name,            // 5
+            $qty_configuration,       // 6
+            $scope_of_work,           // 7
+            $client_name,             // 8
+            $project_owner,           // 9
+            $contract_number,         // 10
+            $contract_date,           // 11
+            $contract_address,        // 12
+            $director_name,           // 13
+            $pic_name,                // 14
+            $pic_contact,             // 15
+            $project_start_date,      // 16
+            $project_manager,         // 17
+            $market,                  // 18
+            $material_steel_supplier, // 19
+            $material_bolt_supplier,  // 20
+            $material_anchorage_supplier, // 21
+            $material_bearing_supplier,   // 22
+            $material_deck_supplier,      // 23
+            $require_wps_pqr,             // 24
+            $require_galvanizing_cert,    // 25
+            $require_mill_cert_sm490,     // 26
+            $require_inspection_report,   // 27
+            $require_mill_cert_deck,      // 28
+            $require_visual_welding,      // 29
+            $require_mill_cert_pipe,      // 30
+            $require_dimensional_report,  // 31
+            $engineering_start_date,      // 32
+            $engineering_finish_date,     // 33
+            $engineering_pic,             // 34
+            $purchasing_start_date,       // 35
+            $purchasing_finish_date,      // 36
+            $purchasing_pic,              // 37
+            $fabrikasi_start_date,        // 38
+            $fabrikasi_finish_date,       // 39
+            $fabrikasi_pic,               // 40
+            $logistik_start_date,         // 41
+            $logistik_finish_date,        // 42
+            $logistik_pic,                // 43
+            $notes,                       // 44
+            $status,                      // 45
+            $created_by                   // 46 (integer)
         );
 
         if ($stmt->execute()) {
@@ -199,11 +200,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "Membuat PON baru: {$pon_number}"
             );
 
-            // TODO Phase 3: Kirim Email Notifikasi ke Admin & Divisi
-            // send_pon_notification($conn, $new_pon_id, 'create');
+            // ============================================================
+            // NEW: Send Email Notification (Phase 3)
+            // ============================================================
+            try {
+                $email_sent = send_pon_created_notification($conn, $new_pon_id);
+
+                if ($email_sent) {
+                    error_log("Email SUCCESS: Notification sent for new PON $pon_number (ID: $new_pon_id)");
+                } else {
+                    error_log("Email WARNING: Failed to send notification for PON $pon_number (ID: $new_pon_id)");
+                    // Note: Tidak error karena PON sudah berhasil dibuat
+                    // Email failure tidak boleh stop process
+                }
+            } catch (Exception $e) {
+                error_log("Email ERROR: Exception when sending notification - " . $e->getMessage());
+                // Continue process meskipun email gagal
+            }
 
             // Redirect ke detail page
-            $_SESSION['success_message'] = "PON {$pon_number} berhasil dibuat!";
+            $_SESSION['success_message'] = "PON {$pon_number} berhasil dibuat! Email notifikasi telah dikirim.";
             redirect("modules/pon/detail.php?id={$new_pon_id}");
         } else {
             $errors[] = "Gagal menyimpan PON: " . $stmt->error;
