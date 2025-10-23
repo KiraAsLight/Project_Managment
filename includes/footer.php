@@ -7,7 +7,7 @@
     // Auto refresh setiap 5 menit
     setTimeout(function() {
         location.reload();
-    }, 300000);
+    }, 600000);
 
     // Animasi smooth untuk circular progress
     window.addEventListener('load', function() {
