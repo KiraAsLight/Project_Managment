@@ -387,4 +387,89 @@ function canViewMaterial()
     // Semua role yang login bisa view material
     return isLoggedIn();
 }
+
+/**
+ * ============================================
+ * FABRICATION PERMISSION FUNCTIONS
+ * ============================================
+ */
+
+/**
+ * Cek apakah user bisa manage fabrication
+ */
+function canManageFabrication()
+{
+    if (!isset($_SESSION['role'])) return false;
+
+    $allowed_roles = ['Admin', 'Fabrikasi'];
+    return in_array($_SESSION['role'], $allowed_roles);
+}
+
+/**
+ * Cek apakah user bisa view fabrication data
+ */
+function canViewFabrication()
+{
+    // Semua role yang login bisa view fabrication data
+    return isLoggedIn();
+}
+
+/**
+ * Cek apakah user bisa update QC
+ */
+function canManageQC()
+{
+    if (!isset($_SESSION['role'])) return false;
+
+    $allowed_roles = ['Admin', 'Fabrikasi', 'QC'];
+    return in_array($_SESSION['role'], $allowed_roles);
+}
+
+/**
+ * Validate fabrication progress (0-100)
+ */
+function validateFabricationProgress($progress)
+{
+    $progress = (float)$progress;
+    return $progress >= 0 && $progress <= 100;
+}
+
+/**
+ * Get fabrication phase by progress percentage
+ */
+function getFabricationPhaseByProgress($progress)
+{
+    $progress = (float)$progress;
+
+    if ($progress >= 80) return 'Final Assembly & Finishing';
+    if ($progress >= 60) return 'Welding & Joining';
+    if ($progress >= 40) return 'Component Assembly';
+    if ($progress >= 20) return 'Cutting & Preparation';
+    return 'Material Preparation';
+}
+
+/**
+ * Log fabrication history
+ */
+function logFabricationHistory($conn, $material_id, $progress_from, $progress_to, $status_from, $status_to, $fabrication_phase, $qc_status, $notes)
+{
+    $stmt = $conn->prepare("INSERT INTO fabrication_history 
+                           (material_id, progress_from, progress_to, status_from, status_to, fabrication_phase, qc_status, notes, updated_by) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+    $stmt->bind_param(
+        "iddssssi",
+        $material_id,
+        $progress_from,
+        $progress_to,
+        $status_from,
+        $status_to,
+        $fabrication_phase,
+        $qc_status,
+        $notes,
+        $_SESSION['user_id']
+    );
+
+    return $stmt->execute();
+}
 ?>
