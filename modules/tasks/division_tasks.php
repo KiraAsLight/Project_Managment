@@ -3187,34 +3187,63 @@ include '../../includes/header.php';
     // ==============================================
 
     function updateMaterialFabrication(materialId) {
+        <?php if (!canManageFabrication()): ?>
+            showToast("You don't have permission to update fabrication", 'error');
+            return;
+        <?php endif; ?>
+
+        showLoading('Loading material data...');
+
         fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
             .then(response => response.json())
             .then(data => {
+                hideLoading();
                 if (data.success) {
                     const material = data.materials.find(m => m.material_id == materialId);
                     if (material) {
-                        showMaterialFabricationModal(material);
+                        showMaterialFabricationEditModal(material);
+                    } else {
+                        throw new Error('Material not found');
                     }
+                } else {
+                    throw new Error(data.message);
                 }
             })
             .catch(error => {
+                hideLoading();
                 console.error("Error:", error);
-                alert("Error loading material data");
+                showToast("Error loading material data: " + error.message, 'error');
             });
     }
 
-    function showMaterialFabricationModal(material) {
-        document.getElementById("fabrication_material_id").value = material.material_id;
-        document.getElementById("fabrication_material_name").textContent = material.material_name;
-        document.getElementById("fabrication_assy_marking").textContent = material.assy_marking || 'N/A';
-        document.getElementById("fabrication_progress").value = material.fabrication_progress || 0;
-        document.getElementById("fabrication_status").value = material.fabrication_status || 'Pending';
-        document.getElementById("fabrication_phase").value = getFabricationPhaseByProgress(material.fabrication_progress);
-        document.getElementById("qc_status").value = 'Pending';
-        document.getElementById("fabrication_notes").value = '';
+    function showMaterialFabricationModal() {
+        showLoading('Loading materials...');
 
-        updateFabricationProgressValue(material.fabrication_progress || 0);
-        document.getElementById("materialFabricationModal").classList.remove("hidden");
+        fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    const pendingMaterials = data.materials.filter(m =>
+                        m.fabrication_status === 'Pending' || m.fabrication_status === 'In Progress'
+                    );
+
+                    if (pendingMaterials.length === 0) {
+                        showToast('✅ All materials have been processed', 'info');
+                        return;
+                    }
+
+                    // Tampilkan material selection modal
+                    showMaterialSelectionModal(pendingMaterials);
+                } else {
+                    throw new Error(data.message || 'Failed to load materials');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error("Error:", error);
+                showToast("Error loading materials: " + error.message, 'error');
+            });
     }
 
     function getFabricationPhaseByProgress(progress) {
@@ -3427,6 +3456,154 @@ include '../../includes/header.php';
                 console.error("Error:", error);
                 alert("Error loading materials");
             });
+    }
+
+    // TAMBAHKAN FUNGSI BARU INI
+    function showMaterialSelectionModal(materials) {
+        let materialOptions = '';
+
+        materials.forEach((material, index) => {
+            const statusBadge = material.fabrication_status === 'Pending' ?
+                '<span class="px-2 py-1 bg-gray-500 text-white text-xs rounded">Not Started</span>' :
+                '<span class="px-2 py-1 bg-orange-500 text-white text-xs rounded">In Progress (' + material.fabrication_progress + '%)</span>';
+
+            materialOptions += `
+            <div class="material-select-item p-4 bg-gray-750 rounded-lg mb-3 cursor-pointer hover:bg-gray-700 transition border-2 border-transparent hover:border-orange-500"
+                 onclick="selectMaterialForFabrication(${material.material_id})">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-2xl font-bold text-orange-400">${index + 1}</span>
+                            <div>
+                                <h4 class="text-white font-semibold text-lg">${escapeHtml(material.material_name)}</h4>
+                                <div class="flex items-center space-x-3 mt-1">
+                                    <span class="text-gray-400 text-sm">Assy: <span class="text-orange-300 font-mono">${material.assy_marking || 'N/A'}</span></span>
+                                    <span class="text-gray-400 text-sm">Qty: <span class="text-white">${material.quantity}</span></span>
+                                    ${material.total_weight_kg ? `<span class="text-gray-400 text-sm">Weight: <span class="text-white">${parseFloat(material.total_weight_kg).toFixed(2)} kg</span></span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right ml-4">
+                        ${statusBadge}
+                    </div>
+                </div>
+            </div>
+        `;
+        });
+
+        const modalHTML = `
+        <div id="materialSelectionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold text-white">
+                        <i class="fas fa-tools text-orange-400 mr-2"></i>
+                        Select Material for Fabrication
+                    </h3>
+                    <button onclick="closeMaterialSelectionModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="mb-4">
+                    <p class="text-gray-400 text-sm">
+                        <i class="fas fa-info-circle text-blue-400 mr-1"></i>
+                        Select a material to start or update its fabrication progress
+                    </p>
+                </div>
+
+                <div class="flex-1 overflow-y-auto">
+                    ${materialOptions}
+                </div>
+
+                <div class="flex justify-end mt-6 pt-4 border-t border-gray-700">
+                    <button onclick="closeMaterialSelectionModal()"
+                            class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('materialSelectionModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeMaterialSelectionModal() {
+        const modal = document.getElementById('materialSelectionModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    function selectMaterialForFabrication(materialId) {
+        closeMaterialSelectionModal();
+
+        showLoading('Loading material data...');
+
+        // Load material detail
+        fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    const material = data.materials.find(m => m.material_id == materialId);
+                    if (material) {
+                        showMaterialFabricationEditModal(material);
+                    } else {
+                        throw new Error('Material not found');
+                    }
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Error:', error);
+                showToast('Error loading material data', 'error');
+            });
+    }
+
+    function showMaterialFabricationEditModal(material) {
+        // Populate modal dengan data material
+        document.getElementById("fabrication_material_id").value = material.material_id;
+        document.getElementById("fabrication_material_name").textContent = material.material_name;
+        document.getElementById("fabrication_assy_marking").textContent = material.assy_marking || 'N/A';
+
+        // Set progress
+        const currentProgress = parseFloat(material.fabrication_progress) || 0;
+        document.getElementById("fabrication_progress").value = currentProgress;
+        updateFabricationProgressValue(currentProgress);
+
+        // Set status
+        document.getElementById("fabrication_status").value = material.fabrication_status || 'Pending';
+
+        // Set fabrication phase berdasarkan progress
+        const phase = material.fabrication_phase || getFabricationPhaseByProgress(currentProgress);
+        document.getElementById("fabrication_phase").value = phase;
+
+        // Set QC status
+        document.getElementById("qc_status").value = material.qc_status || 'Pending';
+
+        // Set workstation & shift jika ada
+        if (material.workstation) {
+            document.getElementById("workstation").value = material.workstation;
+        }
+        if (material.shift) {
+            document.getElementById("shift").value = material.shift;
+        }
+
+        // Clear notes
+        document.getElementById("fabrication_notes").value = '';
+
+        // Show modal
+        document.getElementById("materialFabricationModal").classList.remove("hidden");
     }
 
     function startMaterialFabrication(materialId) {
@@ -5236,11 +5413,14 @@ include '../../includes/header.php';
     </div>
 </div>
 
-<!-- Material Fabrication Progress Modal -->
+<!-- Material Fabrication Progress Modal - IMPROVED -->
 <div id="materialFabricationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
-            <h3 class="text-xl font-bold text-white">Update Material Fabrication</h3>
+            <h3 class="text-xl font-bold text-white">
+                <i class="fas fa-hammer text-orange-400 mr-2"></i>
+                Update Material Fabrication
+            </h3>
             <button onclick="closeMaterialFabricationModal()" class="text-gray-400 hover:text-white">
                 <i class="fas fa-times text-xl"></i>
             </button>
@@ -5250,27 +5430,50 @@ include '../../includes/header.php';
             <input type="hidden" id="fabrication_material_id" name="material_id" value="">
 
             <!-- Material Info -->
-            <div class="mb-4 p-4 bg-orange-900 bg-opacity-20 rounded-lg border border-orange-700">
-                <h4 class="text-orange-300 font-semibold mb-2">Material Info</h4>
-                <p class="text-white font-semibold" id="fabrication_material_name">-</p>
-                <p class="text-gray-300 text-sm">Assy: <span id="fabrication_assy_marking">-</span></p>
-            </div>
-
-            <!-- Progress Slider -->
-            <div class="mb-4">
-                <label class="block text-gray-300 font-medium mb-2">Progress (%) *</label>
-                <input type="range" id="fabrication_progress" name="progress" min="0" max="100" step="1" value="0" required
-                    class="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                    oninput="updateFabricationProgressValue(this.value)">
-                <div class="text-center mt-2">
-                    <span id="fabrication_progress_display" class="text-2xl font-bold text-orange-400">0%</span>
+            <div class="mb-6 p-4 bg-orange-900 bg-opacity-20 rounded-lg border border-orange-700">
+                <h4 class="text-orange-300 font-semibold mb-3 flex items-center">
+                    <i class="fas fa-box mr-2"></i>Material Information
+                </h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <span class="text-gray-400 text-sm">Material Name:</span>
+                        <p class="text-white font-semibold" id="fabrication_material_name">-</p>
+                    </div>
+                    <div>
+                        <span class="text-gray-400 text-sm">Assy Marking:</span>
+                        <p class="text-orange-300 font-mono" id="fabrication_assy_marking">-</p>
+                    </div>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <!-- Progress Slider -->
+            <div class="mb-6">
+                <label class="block text-gray-300 font-medium mb-3">
+                    <i class="fas fa-percentage mr-1"></i>Progress (%) *
+                </label>
+                <div class="mb-4">
+                    <input type="range" id="fabrication_progress" name="progress" min="0" max="100" step="1" value="0" required
+                        class="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                        oninput="updateFabricationProgressValue(this.value)">
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>0%</span>
+                        <span>25%</span>
+                        <span>50%</span>
+                        <span>75%</span>
+                        <span>100%</span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <span id="fabrication_progress_display" class="text-4xl font-bold text-orange-400">0%</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <!-- Fabrication Phase -->
                 <div>
-                    <label class="block text-gray-300 font-medium mb-2">Fabrication Phase *</label>
+                    <label class="block text-gray-300 font-medium mb-2">
+                        <i class="fas fa-tasks mr-1"></i>Fabrication Phase *
+                    </label>
                     <select id="fabrication_phase" name="fabrication_phase" required
                         class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                         <option value="Material Preparation">Material Preparation</option>
@@ -5283,7 +5486,9 @@ include '../../includes/header.php';
 
                 <!-- Status -->
                 <div>
-                    <label class="block text-gray-300 font-medium mb-2">Status *</label>
+                    <label class="block text-gray-300 font-medium mb-2">
+                        <i class="fas fa-flag mr-1"></i>Status *
+                    </label>
                     <select id="fabrication_status" name="fabrication_status" required
                         class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                         <option value="Pending">Pending</option>
@@ -5295,7 +5500,9 @@ include '../../includes/header.php';
 
                 <!-- Workstation -->
                 <div>
-                    <label class="block text-gray-300 font-medium mb-2">Workstation</label>
+                    <label class="block text-gray-300 font-medium mb-2">
+                        <i class="fas fa-industry mr-1"></i>Workstation
+                    </label>
                     <select id="workstation" name="workstation"
                         class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                         <option value="Main Workshop">Main Workshop</option>
@@ -5310,7 +5517,9 @@ include '../../includes/header.php';
 
                 <!-- Shift -->
                 <div>
-                    <label class="block text-gray-300 font-medium mb-2">Shift</label>
+                    <label class="block text-gray-300 font-medium mb-2">
+                        <i class="fas fa-clock mr-1"></i>Shift
+                    </label>
                     <select id="shift" name="shift"
                         class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                         <option value="Shift 1">Shift 1 (07:00 - 15:00)</option>
@@ -5321,8 +5530,10 @@ include '../../includes/header.php';
             </div>
 
             <!-- QC Status -->
-            <div class="mb-4">
-                <label class="block text-gray-300 font-medium mb-2">QC Status</label>
+            <div class="mb-6">
+                <label class="block text-gray-300 font-medium mb-2">
+                    <i class="fas fa-clipboard-check mr-1"></i>QC Status
+                </label>
                 <select id="qc_status" name="qc_status"
                     class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                     <option value="Pending">Pending</option>
@@ -5334,23 +5545,25 @@ include '../../includes/header.php';
             </div>
 
             <!-- Notes -->
-            <div class="mb-4">
-                <label class="block text-gray-300 font-medium mb-2">Notes</label>
-                <textarea id="fabrication_notes" name="notes" rows="3"
+            <div class="mb-6">
+                <label class="block text-gray-300 font-medium mb-2">
+                    <i class="fas fa-sticky-note mr-1"></i>Progress Notes
+                </label>
+                <textarea id="fabrication_notes" name="notes" rows="4"
                     class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500"
-                    placeholder="Fabrication progress notes..."></textarea>
+                    placeholder="Enter progress update notes, issues encountered, or achievements..."></textarea>
             </div>
 
             <!-- Action Buttons -->
             <div class="flex items-center justify-end space-x-3">
                 <button type="button" onclick="closeMaterialFabricationModal()"
                     class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
-                    Cancel
+                    <i class="fas fa-times mr-2"></i>Cancel
                 </button>
                 <button type="submit"
                     class="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
                     <i class="fas fa-save"></i>
-                    <span>Update Progress</span>
+                    <span>Save Progress</span>
                 </button>
             </div>
         </form>
