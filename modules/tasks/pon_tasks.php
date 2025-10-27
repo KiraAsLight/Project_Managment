@@ -29,6 +29,50 @@ if (!$pon) {
     die("PON tidak ditemukan");
 }
 
+// ========== CHECK TASKS PER DIVISION ==========
+// Cek berapa divisi yang BELUM punya tasks
+$divisions_to_check = ['Engineering', 'Purchasing', 'Fabrikasi', 'Logistik', 'QC'];
+$divisions_without_tasks = [];
+
+foreach ($divisions_to_check as $div) {
+    $stmt_div = $conn->prepare("SELECT COUNT(*) as cnt FROM tasks WHERE pon_id = ? AND responsible_division = ?");
+    $stmt_div->bind_param("is", $pon_id, $div);
+    $stmt_div->execute();
+    $result_div = $stmt_div->get_result();
+    $div_count = $result_div->fetch_assoc()['cnt'];
+
+    if ($div_count == 0) {
+        $divisions_without_tasks[] = $div;
+    }
+}
+
+// Flag untuk menampilkan tombol generate
+$show_generate_button = count($divisions_without_tasks) > 0;
+
+// Count total tasks (untuk informasi)
+$stmt_check = $conn->prepare("SELECT COUNT(*) as total FROM tasks WHERE pon_id = ?");
+$stmt_check->bind_param("i", $pon_id);
+$stmt_check->execute();
+$result_check = $stmt_check->get_result();
+$task_count = $result_check->fetch_assoc()['total'];
+// ========== END CHECK ==========
+
+// Handle Generate Tasks Request
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['generate_tasks'])) {
+    require_once 'auto_generate_tasks.php';
+
+    $result = generateTasksForPON($pon_id, $conn);
+
+    if ($result['success']) {
+        $_SESSION['success_message'] = $result['message'];
+        header("Location: pon_tasks.php?pon_id=" . $pon_id);
+        exit;
+    } else {
+        $_SESSION['error_message'] = $result['message'];
+    }
+}
+
+
 // Get all tasks untuk PON ini
 $tasks_query = "SELECT 
                 t.*,
@@ -128,17 +172,64 @@ include '../../includes/header.php';
                     </p>
                 </div>
                 <div class="flex items-center space-x-3">
-                    <a href="../pon/detail.php?id=<?php echo $pon_id; ?>" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+
+                    <!-- Generate Tasks Button (tampil jika tasks = 0) -->
+                    <?php if ($show_generate_button): ?>
+                        <!-- Generate Tasks Button -->
+                        <form method="POST" onsubmit="return confirm('Generate tasks untuk divisi yang belum punya tasks?\n\nDivisi yang belum ada tasks:\n<?php echo implode('\n', $divisions_without_tasks); ?>');" class="inline-block">
+                            <button type="submit" name="generate_tasks"
+                                class="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg flex items-center space-x-2 font-semibold transition">
+                                <i class="fas fa-magic"></i>
+                                <span>Generate Tasks</span>
+                                <?php if (count($divisions_without_tasks) < 5): ?>
+                                    <span class="ml-1 bg-red-600 text-white text-xs px-2 py-1 rounded-full">
+                                        <?php echo count($divisions_without_tasks); ?>
+                                    </span>
+                                <?php endif; ?>
+                            </button>
+                        </form>
+                    <?php endif; ?>
+
+                    <a href="../pon/detail.php?id=<?php echo $pon_id; ?>"
+                        class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
                         <i class="fas fa-folder-open"></i>
                         <span>PON Detail</span>
                     </a>
-                    <a href="manage.php" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                    <a href="manage.php"
+                        class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
                         <i class="fas fa-arrow-left"></i>
                         <span>Back</span>
                     </a>
                 </div>
             </div>
         </div>
+
+        <!-- Success/Error Messages -->
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="mb-6 bg-green-900 bg-opacity-20 border border-green-500 text-green-400 px-6 py-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-check-circle text-2xl mr-3"></i>
+                    <div>
+                        <p class="font-semibold">Success!</p>
+                        <p><?php echo $_SESSION['success_message']; ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['success_message']); ?>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error_message'])): ?>
+            <div class="mb-6 bg-red-900 bg-opacity-20 border border-red-500 text-red-400 px-6 py-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-circle text-2xl mr-3"></i>
+                    <div>
+                        <p class="font-semibold">Error!</p>
+                        <p><?php echo $_SESSION['error_message']; ?></p>
+                    </div>
+                </div>
+            </div>
+            <?php unset($_SESSION['error_message']); ?>
+        <?php endif; ?>
 
         <!-- Top Section -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

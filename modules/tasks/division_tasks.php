@@ -6146,23 +6146,25 @@ function getDivisionTabs($division, $config, $tasks)
             ['id' => 'orders', 'icon' => 'fa-file-invoice', 'label' => 'Purchase Orders', 'count' => ''],
             ['id' => 'suppliers', 'icon' => 'fa-address-book', 'label' => 'Suppliers', 'count' => ''],
             ['id' => 'delivery', 'icon' => 'fa-truck', 'label' => 'Delivery Tracking', 'count' => ''],
-            ['id' => 'deliveries', 'icon' => 'fa-clipboard-list', 'label' => 'Delivery Notes', 'count' => '']
+            ['id' => 'tasks', 'icon' => 'fa-tasks', 'label' => 'Purchasing Tasks', 'count' => count($tasks)]  // ← TAMBAHAN
         ],
         'Fabrikasi' => [
             ['id' => 'workshop', 'icon' => 'fa-tools', 'label' => 'Workshop Progress', 'count' => ''],
             ['id' => 'progress', 'icon' => 'fa-chart-line', 'label' => 'Production Tracking', 'count' => ''],
             ['id' => 'qc_checks', 'icon' => 'fa-clipboard-check', 'label' => 'QC Checks', 'count' => ''],
-            ['id' => 'reports', 'icon' => 'fa-chart-bar', 'label' => 'Reports', 'count' => '']
+            ['id' => 'tasks', 'icon' => 'fa-tasks', 'label' => 'Fabrikasi Tasks', 'count' => count($tasks)]  // ← TAMBAHAN
         ],
         'Logistik' => [
             ['id' => 'shipping', 'icon' => 'fa-shipping-fast', 'label' => 'Shipping Status', 'count' => ''],
             ['id' => 'tracking', 'icon' => 'fa-map-marker-alt', 'label' => 'Live Tracking', 'count' => ''],
-            ['id' => 'deliveries', 'icon' => 'fa-clipboard-list', 'label' => 'Delivery Notes', 'count' => '']
+            ['id' => 'deliveries', 'icon' => 'fa-clipboard-list', 'label' => 'Delivery Notes', 'count' => ''],
+            ['id' => 'tasks', 'icon' => 'fa-tasks', 'label' => 'Logistik Tasks', 'count' => count($tasks)]  // ← TAMBAHAN
         ],
         'QC' => [
             ['id' => 'inspections', 'icon' => 'fa-search', 'label' => 'Inspections', 'count' => ''],
-            ['id' => 'documents', 'icon' => 'fa-file-medical', 'label' => 'QC Documents', 'count' => ''],
-            ['id' => 'compliance', 'icon' => 'fa-check-double', 'label' => 'Compliance', 'count' => '']
+            ['id' => 'documents', 'icon' => 'fa-file-alt', 'label' => 'QC Documents', 'count' => ''],
+            ['id' => 'compliance', 'icon' => 'fa-check-circle', 'label' => 'Compliance', 'count' => ''],
+            ['id' => 'tasks', 'icon' => 'fa-tasks', 'label' => 'QC Tasks', 'count' => count($tasks)]  // ← TAMBAHAN
         ]
     ];
 
@@ -6191,10 +6193,10 @@ function getDivisionTabContent($division, $pon_id, $tasks, $config)
 
     $tab_configs = [
         'Engineering' => ['material', 'drawings', 'tasks'],
-        'Purchasing' => ['orders', 'suppliers', 'deliveries'],
-        'Fabrikasi' => ['workshop', 'progress', 'qc_checks'],
-        'Logistik' => ['shipping', 'tracking', 'deliveries'],
-        'QC' => ['inspections', 'documents', 'compliance']
+        'Purchasing' => ['orders', 'suppliers', 'delivery', 'tasks'],
+        'Fabrikasi' => ['workshop', 'progress', 'qc_checks', 'tasks'],
+        'Logistik' => ['shipping', 'tracking', 'deliveries', 'tasks'],
+        'QC' => ['inspections', 'documents', 'compliance', 'tasks']
     ];
 
     $tabs = $tab_configs[$division] ?? $tab_configs['Engineering'];
@@ -6913,108 +6915,103 @@ function getPurchasingTabContent($pon_id, $tasks, $config, $material_items)
         </div>
     </div>';
 
-    // Delivery Notes Tab - TAMBAHKAN SETELAH content-delivery
+    // PURCHASING TASKS
     $html .= '
-    <div id="content-deliveries" class="tab-content hidden">
-        <div class="mb-6">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h3 class="text-xl font-bold text-white">Delivery Notes & Documentation</h3>
-                    <p class="text-gray-400 mt-2">Complete delivery records with proof of delivery (POD)</p>
-                </div>
-                <button onclick="showAddDeliveryModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition">
-                    <i class="fas fa-plus-circle"></i>
-                    <span>Create Delivery Note</span>
-                </button>
+    <div id="content-tasks" class="tab-content hidden">
+        <div class="bg-dark-light rounded-xl shadow-xl">
+            <div class="p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">
+                    <i class="fas fa-tasks text-green-400 mr-2"></i>
+                    Purchasing Tasks
+                </h2>
             </div>
-        </div>
 
-        <!-- Statistics Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-blue-900 bg-opacity-20 p-4 rounded-lg border border-blue-700">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="text-2xl font-bold text-blue-400" id="totalDeliveryNotes">0</div>
-                        <div class="text-blue-300 text-sm">Total Delivery Notes</div>
-                    </div>
-                    <i class="fas fa-clipboard-list text-blue-400 text-2xl"></i>
-                </div>
-            </div>
-            
-            <div class="bg-green-900 bg-opacity-20 p-4 rounded-lg border border-green-700">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="text-2xl font-bold text-green-400" id="completedDeliveryNotes">0</div>
-                        <div class="text-green-300 text-sm">Completed</div>
-                    </div>
-                    <i class="fas fa-check-circle text-green-400 text-2xl"></i>
-                </div>
-            </div>
-            
-            <div class="bg-yellow-900 bg-opacity-20 p-4 rounded-lg border border-yellow-700">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="text-2xl font-bold text-yellow-400" id="pendingDeliveryNotes">0</div>
-                        <div class="text-yellow-300 text-sm">In Transit</div>
-                    </div>
-                    <i class="fas fa-shipping-fast text-yellow-400 text-2xl"></i>
-                </div>
-            </div>
-            
-            <div class="bg-purple-900 bg-opacity-20 p-4 rounded-lg border border-purple-700">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="text-2xl font-bold text-purple-400" id="thisMonthDeliveries">0</div>
-                        <div class="text-purple-300 text-sm">This Month</div>
-                    </div>
-                    <i class="fas fa-calendar-alt text-purple-400 text-2xl"></i>
-                </div>
-            </div>
-        </div>
-
-        <!-- Delivery Notes Table -->
-        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="min-w-full">
-                    <thead class="bg-gray-700">
+                <table class="w-full">
+                    <thead class="bg-gray-800 text-gray-400 text-sm">
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery Note #</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Order Reference</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Material</th>
-                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Delivery Date</th>
-                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Received Qty</th>
-                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                            <th class="px-6 py-4 text-left">No</th>
+                            <th class="px-6 py-4 text-left">Task Name</th>
+                            <th class="px-6 py-4 text-left">Phase</th>
+                            <th class="px-6 py-4 text-left">PIC</th>
+                            <th class="px-6 py-4 text-center">Start Date</th>
+                            <th class="px-6 py-4 text-center">Due Date</th>
+                            <th class="px-6 py-4 text-center">Progress</th>
+                            <th class="px-6 py-4 text-center">Status</th>
+                            <th class="px-6 py-4 text-center">Action</th>
                         </tr>
                     </thead>
-                    <tbody id="deliveryNotesTableBody" class="bg-gray-800 divide-y divide-gray-700">
+                    <tbody class="divide-y divide-gray-700">';
+
+    if (empty($tasks)) {
+        $html .= '
                         <tr>
-                            <td colspan="8" class="px-4 py-8 text-center text-gray-500">
-                                <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                                <p>Loading delivery notes...</p>
+                            <td colspan="9" class="px-6 py-12 text-center">
+                                <div class="flex flex-col items-center">
+                                    <i class="fas fa-inbox text-gray-600 text-5xl mb-4"></i>
+                                    <p class="text-gray-400 text-lg">Belum ada tasks untuk divisi Purchasing</p>
+                                    <a href="pon_tasks.php?pon_id=' . $pon_id . '" 
+                                       class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                                        Generate Tasks
+                                    </a>
+                                </div>
                             </td>
-                        </tr>
+                        </tr>';
+    } else {
+        $no = 1;
+        foreach ($tasks as $task) {
+            $html .= '
+                        <tr class="hover:bg-gray-800 transition">
+                            <td class="px-6 py-4 text-gray-300">' . $no++ . '</td>
+                            <td class="px-6 py-4">
+                                <p class="text-white font-semibold">' . htmlspecialchars($task['task_name']) . '</p>
+                                <p class="text-gray-400 text-sm mt-1">' . htmlspecialchars(substr($task['description'], 0, 100)) . '...</p>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="text-xs px-3 py-1 rounded-full bg-purple-900 text-purple-200 font-semibold">
+                                    ' . $task['phase'] . '
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-300 text-sm">
+                                ' . htmlspecialchars($task['pic_internal'] ?? $task['assigned_to_name'] ?? '-') . '
+                            </td>
+                            <td class="px-6 py-4 text-center text-gray-300 text-sm">
+                                ' . date('d M Y', strtotime($task['start_date'])) . '
+                            </td>
+                            <td class="px-6 py-4 text-center text-gray-300 text-sm">
+                                ' . date('d M Y', strtotime($task['finish_date'])) . '
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="text-white font-bold text-lg">' . round($task['progress']) . '%</span>
+                                    <div class="w-20 bg-gray-700 rounded-full h-2 mt-1">
+                                        <div class="h-2 rounded-full bg-green-500" style="width: ' . $task['progress'] . '%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold ' . get_status_color($task['status']) . ' text-white">
+                                    ' . $task['status'] . '
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <button onclick="updateTaskProgress(' . $task['task_id'] . ')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
+                                        <i class="fas fa-edit mr-1"></i>Update Progress
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>';
+        }
+    }
+
+    $html .= '
                     </tbody>
                 </table>
             </div>
         </div>
-
-        <!-- Info Box -->
-        <div class="mt-6 p-4 bg-blue-900 bg-opacity-20 rounded-lg border border-blue-700">
-            <h4 class="text-blue-300 font-semibold mb-2 flex items-center">
-                <i class="fas fa-info-circle mr-2"></i>
-                Delivery Notes Management
-            </h4>
-            <ul class="text-blue-200 text-sm space-y-1">
-                <li>• Delivery notes are automatically created from delivery tracking</li>
-                <li>• Each delivery note contains proof of delivery (POD) and received quantities</li>
-                <li>• Update received quantities to match actual delivery</li>
-                <li>• Track partial deliveries and backorders</li>
-            </ul>
-        </div>
     </div>';
-
 
     return $html;
 }
@@ -7301,10 +7298,101 @@ function getFabricationTabContent($pon_id, $tasks, $config)
         ' . generateAdvancedQCChecksContent($pon_id) . '
     </div>';
 
-    // TAMBAHKAN Tab Baru - Fabrication Reports
+    // FABRIKASI TASKS TAB
     $html .= '
-    <div id="content-reports" class="tab-content hidden">
-        ' . generateFabricationReportsContent($pon_id) . '
+    <div id="content-tasks" class="tab-content hidden">
+        <div class="bg-dark-light rounded-xl shadow-xl">
+            <div class="p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">
+                    <i class="fas fa-tasks text-orange-400 mr-2"></i>
+                    Fabrikasi Tasks
+                </h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-800 text-gray-400 text-sm">
+                        <tr>
+                            <th class="px-6 py-4 text-left">No</th>
+                            <th class="px-6 py-4 text-left">Task Name</th>
+                            <th class="px-6 py-4 text-left">Phase</th>
+                            <th class="px-6 py-4 text-left">PIC</th>
+                            <th class="px-6 py-4 text-center">Start Date</th>
+                            <th class="px-6 py-4 text-center">Due Date</th>
+                            <th class="px-6 py-4 text-center">Progress</th>
+                            <th class="px-6 py-4 text-center">Status</th>
+                            <th class="px-6 py-4 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">';
+
+    if (empty($tasks)) {
+        $html .= '
+                        <tr>
+                            <td colspan="9" class="px-6 py-12 text-center">
+                                <div class="flex flex-col items-center">
+                                    <i class="fas fa-inbox text-gray-600 text-5xl mb-4"></i>
+                                    <p class="text-gray-400 text-lg">Belum ada tasks untuk divisi Purchasing</p>
+                                    <a href="pon_tasks.php?pon_id=' . $pon_id . '" 
+                                       class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                                        Generate Tasks
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>';
+    } else {
+        $no = 1;
+        foreach ($tasks as $task) {
+            $html .= '
+                        <tr class="hover:bg-gray-800 transition">
+                            <td class="px-6 py-4 text-gray-300">' . $no++ . '</td>
+                            <td class="px-6 py-4">
+                                <p class="text-white font-semibold">' . htmlspecialchars($task['task_name']) . '</p>
+                                <p class="text-gray-400 text-sm mt-1">' . htmlspecialchars(substr($task['description'], 0, 100)) . '...</p>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="text-xs px-3 py-1 rounded-full bg-purple-900 text-purple-200 font-semibold">
+                                    ' . $task['phase'] . '
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-300 text-sm">
+                                ' . htmlspecialchars($task['pic_internal'] ?? $task['assigned_to_name'] ?? '-') . '
+                            </td>
+                            <td class="px-6 py-4 text-center text-gray-300 text-sm">
+                                ' . date('d M Y', strtotime($task['start_date'])) . '
+                            </td>
+                            <td class="px-6 py-4 text-center text-gray-300 text-sm">
+                                ' . date('d M Y', strtotime($task['finish_date'])) . '
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="text-white font-bold text-lg">' . round($task['progress']) . '%</span>
+                                    <div class="w-20 bg-gray-700 rounded-full h-2 mt-1">
+                                        <div class="h-2 rounded-full bg-green-500" style="width: ' . $task['progress'] . '%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold ' . get_status_color($task['status']) . ' text-white">
+                                    ' . $task['status'] . '
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                               <div class="flex items-center justify-center space-x-2">
+                                    <button onclick="updateTaskProgress(' . $task['task_id'] . ')" 
+                                            class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
+                                        <i class="fas fa-edit mr-1"></i>Update Progress
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>';
+        }
+    }
+
+    $html .= '
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>';
 
     return $html;
@@ -8136,6 +8224,105 @@ function getLogistikTabContent($pon_id, $tasks, $config)
                 <h3 class="text-2xl font-bold text-white mb-2">Delivery Notes</h3>
                 <p class="text-gray-400 mb-6">Document management & POD system</p>
                 <p class="text-purple-300 text-sm">This feature will be available in Phase 4</p>
+            </div>
+        </div>
+    </div>';
+
+    // LOGISTIK TASKS TAB
+    // Di akhir fungsi generateLogistikContent():
+
+    $html .= '
+    <div id="content-tasks" class="tab-content hidden">
+        <div class="bg-dark-light rounded-xl shadow-xl">
+            <div class="p-6 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">
+                    <i class="fas fa-tasks text-purple-400 mr-2"></i>
+                    Logistik Tasks
+                </h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-800 text-gray-400 text-sm">
+                        <tr>
+                            <th class="px-6 py-4 text-left">No</th>
+                            <th class="px-6 py-4 text-left">Task Name</th>
+                            <th class="px-6 py-4 text-left">Phase</th>
+                            <th class="px-6 py-4 text-left">PIC</th>
+                            <th class="px-6 py-4 text-center">Start Date</th>
+                            <th class="px-6 py-4 text-center">Due Date</th>
+                            <th class="px-6 py-4 text-center">Progress</th>
+                            <th class="px-6 py-4 text-center">Status</th>
+                            <th class="px-6 py-4 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">';
+
+    if (empty($tasks)) {
+        $html .= '
+                        <tr>
+                            <td colspan="9" class="px-6 py-12 text-center">
+                                <div class="flex flex-col items-center">
+                                    <i class="fas fa-inbox text-gray-600 text-5xl mb-4"></i>
+                                    <p class="text-gray-400 text-lg">Belum ada tasks untuk divisi Purchasing</p>
+                                    <a href="pon_tasks.php?pon_id=' . $pon_id . '" 
+                                       class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg">
+                                        Generate Tasks
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>';
+    } else {
+        $no = 1;
+        foreach ($tasks as $task) {
+            $html .= '
+                        <tr class="hover:bg-gray-800 transition">
+                            <td class="px-6 py-4 text-gray-300">' . $no++ . '</td>
+                            <td class="px-6 py-4">
+                                <p class="text-white font-semibold">' . htmlspecialchars($task['task_name']) . '</p>
+                                <p class="text-gray-400 text-sm mt-1">' . htmlspecialchars(substr($task['description'], 0, 100)) . '...</p>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="text-xs px-3 py-1 rounded-full bg-purple-900 text-purple-200 font-semibold">
+                                    ' . $task['phase'] . '
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-300 text-sm">
+                                ' . htmlspecialchars($task['pic_internal'] ?? $task['assigned_to_name'] ?? '-') . '
+                            </td>
+                            <td class="px-6 py-4 text-center text-gray-300 text-sm">
+                                ' . date('d M Y', strtotime($task['start_date'])) . '
+                            </td>
+                            <td class="px-6 py-4 text-center text-gray-300 text-sm">
+                                ' . date('d M Y', strtotime($task['finish_date'])) . '
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="text-white font-bold text-lg">' . round($task['progress']) . '%</span>
+                                    <div class="w-20 bg-gray-700 rounded-full h-2 mt-1">
+                                        <div class="h-2 rounded-full bg-green-500" style="width: ' . $task['progress'] . '%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold ' . get_status_color($task['status']) . ' text-white">
+                                    ' . $task['status'] . '
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <button onclick="updateTaskProgress(' . $task['task_id'] . ')" 
+                                            class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
+                                        <i class="fas fa-edit mr-1"></i>Update Progress
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>';
+        }
+    }
+
+    $html .= '
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>';

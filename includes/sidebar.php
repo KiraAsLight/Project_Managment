@@ -79,6 +79,15 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
 
             <!-- Reports (Admin) -->
             <?php if (hasRole('Admin')): ?>
+                <!-- Dalam menu Tasks atau Admin -->
+                <li>
+                    <a href="<?php echo BASE_URL; ?>modules/tasks/tasks_generator_admin.php"
+                        class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white">
+                        <i class="fas fa-magic mr-3"></i>
+                        <span>Task Generator</span>
+                    </a>
+                </li>
+
                 <li>
                     <a href="<?php echo BASE_URL; ?>modules/reports/index.php"
                         class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-700">
