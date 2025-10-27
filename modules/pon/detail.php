@@ -869,8 +869,8 @@ include '../../includes/header.php';
                     </h2>
                     <?php if (hasAnyRole(['Admin'])): ?>
                         <a href="../tasks/manage.php?pon_id=<?php echo $pon_id; ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
-                            <i class="fas fa-plus"></i>
-                            <span>Add Task</span>
+                            <i class="fas fa-tasks"></i>
+                            <span>Task List</span>
                         </a>
                     <?php endif; ?>
                 </div>

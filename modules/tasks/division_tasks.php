@@ -231,6 +231,25 @@ include '../../includes/header.php';
     // COMMON FUNCTIONS
     // ==============================================
 
+    function getStatusColor(status) {
+        const colors = {
+            'Completed': 'bg-green-500',
+            'In Progress': 'bg-orange-500',
+            'Pending': 'bg-gray-500',
+            'Rejected': 'bg-red-500',
+        };
+        return colors[status] || 'bg-gray-500';
+    }
+
+    function getProgressColor(progress) {
+        if (progress >= 90) return 'text-green-400';
+        if (progress >= 70) return 'text-green-300';
+        if (progress >= 50) return 'text-yellow-400';
+        if (progress >= 30) return 'text-orange-400';
+        if (progress > 0) return 'text-red-400';
+        return 'text-gray-400';
+    }
+
     // Tab Management
     function switchTab(tabName) {
         console.log('🔄 Switching to tab:', tabName);
@@ -293,25 +312,6 @@ include '../../includes/header.php';
         } else {
             window.location.hash = tabName;
         }
-    }
-
-    function getStatusColor(status) {
-        const colors = {
-            'Completed': 'bg-green-500',
-            'In Progress': 'bg-orange-500',
-            'Pending': 'bg-gray-500',
-            'Rejected': 'bg-red-500',
-        };
-        return colors[status] || 'bg-gray-500';
-    }
-
-    function getProgressColor(progress) {
-        if (progress >= 90) return 'text-green-400';
-        if (progress >= 70) return 'text-green-300';
-        if (progress >= 50) return 'text-yellow-400';
-        if (progress >= 30) return 'text-orange-400';
-        if (progress > 0) return 'text-red-400';
-        return 'text-gray-400';
     }
 
     // ==============================================
@@ -613,7 +613,6 @@ include '../../includes/header.php';
         document.getElementById('rejectedDrawings').textContent = rejected;
     }
 
-    // Update refreshDrawingsList function
     function refreshDrawingsList() {
         const drawingsTable = document.getElementById('drawingsTableBody');
         if (drawingsTable) {
@@ -632,7 +631,7 @@ include '../../includes/header.php';
             .then(data => {
                 if (data.success) {
                     updateDrawingsTable(data.drawings);
-                    updateDrawingStatistics(data.drawings); // Add this line
+                    updateDrawingStatistics(data.drawings);
                 } else {
                     throw new Error(data.message);
                 }
@@ -899,37 +898,9 @@ include '../../includes/header.php';
         refreshDrawingsList();
     }
 
-    // Enhanced tab switching to handle drawings initialization
-    function switchTab(tabName) {
-        // Hide all tab contents
-        document.querySelectorAll('.tab-content').forEach(tab => {
-            tab.classList.add('hidden');
-        });
-
-        // Remove active state from all tabs
-        document.querySelectorAll('[id^="tab-"]').forEach(tab => {
-            tab.classList.remove('border-' + themeColor + '-500', 'text-white');
-            tab.classList.add('border-transparent', 'text-gray-400');
-        });
-
-        // Show selected tab content
-        const contentElement = document.getElementById('content-' + tabName);
-        if (contentElement) {
-            contentElement.classList.remove('hidden');
-
-            // Initialize drawings tab if it's being shown
-            if (tabName === 'drawings') {
-                initDrawingsTab();
-            }
-        }
-
-        // Activate selected tab
-        const tabElement = document.getElementById('tab-' + tabName);
-        if (tabElement) {
-            tabElement.classList.add('border-' + themeColor + '-500', 'text-white');
-            tabElement.classList.remove('border-transparent', 'text-gray-400');
-        }
-    }
+    // ==============================================
+    // PROGRESS UPDATE FUNCTIONS
+    // ==============================================
 
     function updateProgress() {
         <?php if (!canManageMaterial()): ?>
@@ -1021,8 +992,6 @@ include '../../includes/header.php';
 
         tbody.innerHTML = html;
     }
-
-
 
     function selectTaskForProgressUpdate(taskId) {
         closeTaskSelectionModal();
@@ -3186,64 +3155,147 @@ include '../../includes/header.php';
     // FABRIKASI FUNCTIONS - FOKUS MATERIAL PROGRESS
     // ==============================================
 
+    /**
+     * Start Material Fabrication - untuk material yang statusnya masih Pending
+     * Langsung menampilkan modal Fabrication Phase (bukan modal pilih material)
+     * 
+     * @param {number} materialId - ID material yang akan dimulai fabrikasinya
+     */
+    function startMaterialFabrication(materialId) {
+        console.log('🚀 Starting fabrication for material:', materialId);
+
+        // Langsung ke modal Fabrication Phase (skip material selection)
+        // Karena user sudah klik tombol Start di material tertentu
+        showFabricationPhaseModal(materialId);
+    }
+
     function updateMaterialFabrication(materialId) {
-        <?php if (!canManageFabrication()): ?>
-            showToast("You don't have permission to update fabrication", 'error');
-            return;
-        <?php endif; ?>
+        console.log('📝 Updating fabrication for material:', materialId);
 
         showLoading('Loading material data...');
 
+        // Langsung fetch data material spesifik
         fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
             .then(response => response.json())
             .then(data => {
                 hideLoading();
                 if (data.success) {
+                    // Cari material yang spesifik berdasarkan materialId
                     const material = data.materials.find(m => m.material_id == materialId);
                     if (material) {
-                        showMaterialFabricationEditModal(material);
+                        showMaterialFabricationModal(material);
                     } else {
-                        throw new Error('Material not found');
+                        showToast('❌ Material not found in fabrication data', 'error');
                     }
                 } else {
-                    throw new Error(data.message);
+                    showToast('❌ ' + data.message, 'error');
                 }
             })
             .catch(error => {
                 hideLoading();
                 console.error("Error:", error);
-                showToast("Error loading material data: " + error.message, 'error');
+                showToast('❌ Error loading material data', 'error');
             });
     }
 
-    function showMaterialFabricationModal() {
-        showLoading('Loading materials...');
+    /**
+     * Show Material Fabrication Modal for Update
+     */
+    function showMaterialFabricationModal(material) {
+        console.log('🔄 Showing modal for material:', material);
 
-        fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
-            .then(response => response.json())
-            .then(data => {
-                hideLoading();
-                if (data.success) {
-                    const pendingMaterials = data.materials.filter(m =>
-                        m.fabrication_status === 'Pending' || m.fabrication_status === 'In Progress'
-                    );
+        const modalHTML = `
+    <div id="materialFabricationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold text-white">Update Fabrication Progress</h3>
+                <button onclick="closeMaterialFabricationModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
 
-                    if (pendingMaterials.length === 0) {
-                        showToast('✅ All materials have been processed', 'info');
-                        return;
-                    }
+            <form id="materialFabricationForm" onsubmit="updateMaterialFabricationSubmit(event)">
+                <input type="hidden" id="fabrication_material_id" name="material_id" value="${material.material_id}">
 
-                    // Tampilkan material selection modal
-                    showMaterialSelectionModal(pendingMaterials);
-                } else {
-                    throw new Error(data.message || 'Failed to load materials');
-                }
-            })
-            .catch(error => {
-                hideLoading();
-                console.error("Error:", error);
-                showToast("Error loading materials: " + error.message, 'error');
-            });
+                <div class="mb-4 p-4 bg-orange-900 bg-opacity-20 rounded-lg border border-orange-700">
+                    <h4 class="text-orange-300 font-semibold mb-2">Material Info</h4>
+                    <p class="text-white font-semibold">${escapeHtml(material.material_name)}</p>
+                    <p class="text-gray-300 text-sm">Assy: ${material.assy_marking || 'N/A'}</p>
+                    <p class="text-gray-300 text-sm">Qty: ${material.quantity} | Weight: ${material.total_weight_kg ? material.total_weight_kg + ' kg' : 'N/A'}</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-300 font-medium mb-2">Fabrication Phase</label>
+                    <select id="fabrication_phase" name="fabrication_phase" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                        <option value="Material Preparation" ${getFabricationPhaseByProgress(material.fabrication_progress || 0) === 'Material Preparation' ? 'selected' : ''}>Material Preparation</option>
+                        <option value="Cutting & Preparation" ${getFabricationPhaseByProgress(material.fabrication_progress || 0) === 'Cutting & Preparation' ? 'selected' : ''}>Cutting & Preparation</option>
+                        <option value="Component Assembly" ${getFabricationPhaseByProgress(material.fabrication_progress || 0) === 'Component Assembly' ? 'selected' : ''}>Component Assembly</option>
+                        <option value="Welding & Joining" ${getFabricationPhaseByProgress(material.fabrication_progress || 0) === 'Welding & Joining' ? 'selected' : ''}>Welding & Joining</option>
+                        <option value="Final Assembly & Finishing" ${getFabricationPhaseByProgress(material.fabrication_progress || 0) === 'Final Assembly & Finishing' ? 'selected' : ''}>Final Assembly & Finishing</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-300 font-medium mb-2">Progress (%)</label>
+                    <input type="range" id="fabrication_progress" name="progress_percent" min="0" max="100" step="1" value="${material.fabrication_progress || 0}"
+                        class="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                        oninput="updateFabricationProgressValue(this.value)">
+                    <div class="text-center mt-2">
+                        <span id="fabrication_progress_display" class="text-2xl font-bold text-orange-400">${material.fabrication_progress || 0}%</span>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-300 font-medium mb-2">Status</label>
+                    <select id="fabrication_status" name="status" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                        <option value="Pending" ${material.fabrication_status === 'Pending' ? 'selected' : ''}>Pending</option>
+                        <option value="In Progress" ${material.fabrication_status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="Completed" ${material.fabrication_status === 'Completed' ? 'selected' : ''}>Completed</option>
+                        <option value="Rejected" ${material.fabrication_status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-300 font-medium mb-2">QC Status</label>
+                    <select id="qc_status" name="qc_status" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                        <option value="Pending" ${material.qc_status === 'Pending' ? 'selected' : ''}>Pending</option>
+                        <option value="In Progress" ${material.qc_status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="Passed" ${material.qc_status === 'Passed' ? 'selected' : ''}>Passed</option>
+                        <option value="Failed" ${material.qc_status === 'Failed' ? 'selected' : ''}>Failed</option>
+                        <option value="Rework" ${material.qc_status === 'Rework' ? 'selected' : ''}>Rework</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-gray-300 font-medium mb-2">Notes</label>
+                    <textarea id="fabrication_notes" name="notes" rows="3" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500" placeholder="Fabrication progress notes...">${material.fabrication_notes || ''}</textarea>
+                </div>
+
+                <div class="flex items-center justify-end space-x-3">
+                    <button type="button" onclick="closeMaterialFabricationModal()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                        <i class="fas fa-save"></i>
+                        <span>Update Progress</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('materialFabricationModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Update slider color
+        updateFabricationProgressValue(material.fabrication_progress || 0);
     }
 
     function getFabricationPhaseByProgress(progress) {
@@ -3255,20 +3307,28 @@ include '../../includes/header.php';
     }
 
     function updateFabricationProgressValue(value) {
-        document.getElementById("fabrication_progress_display").textContent = value + '%';
-
+        const displayElement = document.getElementById("fabrication_progress_display");
         const slider = document.getElementById("fabrication_progress");
-        const percentage = (value - slider.min) / (slider.max - slider.min) * 100;
-        slider.style.background = `linear-gradient(to right, #f97316 ${percentage}%, #374151 ${percentage}%)`;
+
+        if (displayElement) {
+            displayElement.textContent = value + '%';
+        }
+
+        if (slider) {
+            const percentage = (value - slider.min) / (slider.max - slider.min) * 100;
+            slider.style.background = `linear-gradient(to right, #f97316 ${percentage}%, #374151 ${percentage}%)`;
+
+            // Auto-update phase berdasarkan progress
+            const phaseSelect = document.getElementById("fabrication_phase");
+            if (phaseSelect) {
+                const suggestedPhase = getFabricationPhaseByProgress(parseInt(value));
+                phaseSelect.value = suggestedPhase;
+            }
+        }
     }
 
     function updateMaterialFabricationSubmit(event) {
         event.preventDefault();
-
-        <?php if (!canManageFabrication()): ?>
-            showToast("You don't have permission to update fabrication", 'error');
-            return;
-        <?php endif; ?>
 
         const formData = new FormData(event.target);
         const submitBtn = event.target.querySelector('button[type="submit"]');
@@ -3282,153 +3342,37 @@ include '../../includes/header.php';
                 method: "POST",
                 body: formData
             })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network error: ' + response.status);
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     closeMaterialFabricationModal();
-                    showToast(data.message, 'success');
-                    refreshFabricationData();
+                    showToast('✅ ' + data.message, 'success');
+                    // Refresh data
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
                 } else {
                     throw new Error(data.message);
                 }
             })
             .catch(error => {
                 console.error('Update error:', error);
-                showToast("Update failed: " + error.message, 'error');
+                showToast('❌ ' + error.message, 'error');
             })
             .finally(() => {
-                // Reset button state
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
             });
     }
 
-    /**
-     * Show Material Fabrication History
-     */
-    function showMaterialHistory(materialId) {
-        showLoading('Loading fabrication history...');
-
-        fetch(`fabrication_ajax.php?action=get_material_history&material_id=${materialId}`)
-            .then(response => response.json())
-            .then(data => {
-                hideLoading();
-                if (data.success) {
-                    showHistoryModal(data.history);
-                } else {
-                    throw new Error(data.message);
-                }
-            })
-            .catch(error => {
-                hideLoading();
-                console.error('Error:', error);
-                showToast('Error loading history', 'error');
-            });
-    }
-
-    function showHistoryModal(history) {
-        let historyHTML = '';
-
-        if (history.length === 0) {
-            historyHTML = '<div class="text-center py-8 text-gray-500">No history available</div>';
-        } else {
-            history.forEach((item, index) => {
-                const progressChange = (item.progress_to - item.progress_from).toFixed(2);
-                const progressColor = progressChange > 0 ? 'text-green-400' : 'text-gray-400';
-
-                historyHTML += `
-                <div class="p-4 bg-gray-750 rounded-lg mb-3">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-gray-400 text-sm">${formatDateTimeDisplay(item.created_at)}</span>
-                        <span class="text-white font-semibold">${item.updated_by_name || 'System'}</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span class="text-gray-400">Status:</span>
-                            <span class="text-white ml-2">${item.status_from} → ${item.status_to}</span>
-                        </div>
-                        <div>
-                            <span class="text-gray-400">Progress:</span>
-                            <span class="${progressColor} ml-2 font-bold">
-                                ${item.progress_from}% → ${item.progress_to}% 
-                                (${progressChange > 0 ? '+' : ''}${progressChange}%)
-                            </span>
-                        </div>
-                        ${item.fabrication_phase ? `
-                        <div>
-                            <span class="text-gray-400">Phase:</span>
-                            <span class="text-blue-300 ml-2">${item.fabrication_phase}</span>
-                        </div>
-                        ` : ''}
-                        ${item.qc_status ? `
-                        <div>
-                            <span class="text-gray-400">QC Status:</span>
-                            <span class="text-white ml-2">${item.qc_status}</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                    ${item.notes ? `
-                    <div class="mt-2 text-gray-300 text-sm">
-                        <i class="fas fa-sticky-note text-yellow-400 mr-1"></i>
-                        ${escapeHtml(item.notes)}
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-            });
-        }
-
-        const modalHTML = `
-        <div id="historyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-y-auto">
-                <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-xl font-bold text-white">
-                        <i class="fas fa-history text-orange-400 mr-2"></i>
-                        Fabrication History
-                    </h3>
-                    <button onclick="closeHistoryModal()" class="text-gray-400 hover:text-white">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                <div id="historyContent">
-                    ${historyHTML}
-                </div>
-                <div class="flex justify-end mt-6">
-                    <button onclick="closeHistoryModal()" 
-                            class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg">
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-
-        // Remove existing modal if any
-        const existingModal = document.getElementById('historyModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    }
-
-    function closeHistoryModal() {
-        const modal = document.getElementById('historyModal');
+    function closeMaterialFabricationModal() {
+        const modal = document.getElementById('materialFabricationModal');
         if (modal) {
             modal.remove();
         }
     }
 
-    function closeMaterialFabricationModal() {
-        document.getElementById("materialFabricationModal").classList.add("hidden");
-    }
-
-    function showMaterialFabricationModal() {
+    function showMaterialForFabricationModal() {
         fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
             .then(response => response.json())
             .then(data => {
@@ -3436,208 +3380,23 @@ include '../../includes/header.php';
                     const pendingMaterials = data.materials.filter(m => m.fabrication_status === 'Pending');
 
                     if (pendingMaterials.length === 0) {
-                        alert('✅ All materials have fabrication process started');
+                        showToast("✅ All materials have fabrication process started", "success");
                         return;
                     }
 
-                    let materialList = 'Select material to start fabrication:\n\n';
-                    pendingMaterials.forEach((material, index) => {
-                        materialList += `${index + 1}. ${material.material_name} (${material.assy_marking || 'N/A'})\n`;
-                    });
-
-                    const choice = prompt(materialList + '\nEnter material number:');
-                    if (choice && choice >= 1 && choice <= pendingMaterials.length) {
-                        const selectedMaterial = pendingMaterials[choice - 1];
-                        startMaterialFabrication(selectedMaterial.material_id);
-                    }
+                    // GUNAKAN modal selection yang sudah ada, bukan prompt
+                    showMaterialSelectionModal(pendingMaterials);
                 }
             })
             .catch(error => {
                 console.error("Error:", error);
-                alert("Error loading materials");
+                showToast("Error loading materials", "error");
             });
-    }
-
-    // TAMBAHKAN FUNGSI BARU INI
-    function showMaterialSelectionModal(materials) {
-        let materialOptions = '';
-
-        materials.forEach((material, index) => {
-            const statusBadge = material.fabrication_status === 'Pending' ?
-                '<span class="px-2 py-1 bg-gray-500 text-white text-xs rounded">Not Started</span>' :
-                '<span class="px-2 py-1 bg-orange-500 text-white text-xs rounded">In Progress (' + material.fabrication_progress + '%)</span>';
-
-            materialOptions += `
-            <div class="material-select-item p-4 bg-gray-750 rounded-lg mb-3 cursor-pointer hover:bg-gray-700 transition border-2 border-transparent hover:border-orange-500"
-                 onclick="selectMaterialForFabrication(${material.material_id})">
-                <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                        <div class="flex items-center space-x-3">
-                            <span class="text-2xl font-bold text-orange-400">${index + 1}</span>
-                            <div>
-                                <h4 class="text-white font-semibold text-lg">${escapeHtml(material.material_name)}</h4>
-                                <div class="flex items-center space-x-3 mt-1">
-                                    <span class="text-gray-400 text-sm">Assy: <span class="text-orange-300 font-mono">${material.assy_marking || 'N/A'}</span></span>
-                                    <span class="text-gray-400 text-sm">Qty: <span class="text-white">${material.quantity}</span></span>
-                                    ${material.total_weight_kg ? `<span class="text-gray-400 text-sm">Weight: <span class="text-white">${parseFloat(material.total_weight_kg).toFixed(2)} kg</span></span>` : ''}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="text-right ml-4">
-                        ${statusBadge}
-                    </div>
-                </div>
-            </div>
-        `;
-        });
-
-        const modalHTML = `
-        <div id="materialSelectionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
-                <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-xl font-bold text-white">
-                        <i class="fas fa-tools text-orange-400 mr-2"></i>
-                        Select Material for Fabrication
-                    </h3>
-                    <button onclick="closeMaterialSelectionModal()" class="text-gray-400 hover:text-white">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-
-                <div class="mb-4">
-                    <p class="text-gray-400 text-sm">
-                        <i class="fas fa-info-circle text-blue-400 mr-1"></i>
-                        Select a material to start or update its fabrication progress
-                    </p>
-                </div>
-
-                <div class="flex-1 overflow-y-auto">
-                    ${materialOptions}
-                </div>
-
-                <div class="flex justify-end mt-6 pt-4 border-t border-gray-700">
-                    <button onclick="closeMaterialSelectionModal()"
-                            class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-
-        // Remove existing modal if any
-        const existingModal = document.getElementById('materialSelectionModal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    }
-
-    function closeMaterialSelectionModal() {
-        const modal = document.getElementById('materialSelectionModal');
-        if (modal) {
-            modal.remove();
-        }
-    }
-
-    function selectMaterialForFabrication(materialId) {
-        closeMaterialSelectionModal();
-
-        showLoading('Loading material data...');
-
-        // Load material detail
-        fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
-            .then(response => response.json())
-            .then(data => {
-                hideLoading();
-                if (data.success) {
-                    const material = data.materials.find(m => m.material_id == materialId);
-                    if (material) {
-                        showMaterialFabricationEditModal(material);
-                    } else {
-                        throw new Error('Material not found');
-                    }
-                } else {
-                    throw new Error(data.message);
-                }
-            })
-            .catch(error => {
-                hideLoading();
-                console.error('Error:', error);
-                showToast('Error loading material data', 'error');
-            });
-    }
-
-    function showMaterialFabricationEditModal(material) {
-        // Populate modal dengan data material
-        document.getElementById("fabrication_material_id").value = material.material_id;
-        document.getElementById("fabrication_material_name").textContent = material.material_name;
-        document.getElementById("fabrication_assy_marking").textContent = material.assy_marking || 'N/A';
-
-        // Set progress
-        const currentProgress = parseFloat(material.fabrication_progress) || 0;
-        document.getElementById("fabrication_progress").value = currentProgress;
-        updateFabricationProgressValue(currentProgress);
-
-        // Set status
-        document.getElementById("fabrication_status").value = material.fabrication_status || 'Pending';
-
-        // Set fabrication phase berdasarkan progress
-        const phase = material.fabrication_phase || getFabricationPhaseByProgress(currentProgress);
-        document.getElementById("fabrication_phase").value = phase;
-
-        // Set QC status
-        document.getElementById("qc_status").value = material.qc_status || 'Pending';
-
-        // Set workstation & shift jika ada
-        if (material.workstation) {
-            document.getElementById("workstation").value = material.workstation;
-        }
-        if (material.shift) {
-            document.getElementById("shift").value = material.shift;
-        }
-
-        // Clear notes
-        document.getElementById("fabrication_notes").value = '';
-
-        // Show modal
-        document.getElementById("materialFabricationModal").classList.remove("hidden");
-    }
-
-    function startMaterialFabrication(materialId) {
-        const fabricationPhase = prompt('Enter initial fabrication phase:', 'Material Preparation');
-        if (fabricationPhase) {
-            const notes = prompt('Enter initial notes:', 'Starting fabrication process');
-
-            const formData = new FormData();
-            formData.append('material_id', materialId);
-            formData.append('fabrication_phase', fabricationPhase);
-            formData.append('notes', notes);
-
-            fetch('fabrication_ajax.php?action=start_fabrication', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('🚀 ' + data.message);
-                        refreshFabricationData();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Start Fabrication Error:', error);
-                    alert('❌ Failed to start fabrication');
-                });
-        }
     }
 
     function showMaterialProgressUpdate() {
-        alert('📊 Select a material from the list to update its fabrication progress');
+        // GANTI alert dengan toast
+        showToast('📊 Select a material from the list to update its fabrication progress', 'info');
         switchTab('workshop');
     }
 
@@ -3651,111 +3410,378 @@ include '../../includes/header.php';
                     );
 
                     if (inProgressMaterials.length === 0) {
-                        alert('ℹ️ No materials ready for completion (need ≥80% progress)');
+                        showToast('ℹ️ No materials ready for completion (need ≥80% progress)', 'info');
                         return;
                     }
 
-                    let materialList = 'Select material to complete:\n\n';
-                    inProgressMaterials.forEach((material, index) => {
-                        materialList += `${index + 1}. ${material.material_name} (Progress: ${material.fabrication_progress}%)\n`;
-                    });
-
-                    const choice = prompt(materialList + '\nEnter material number:');
-                    if (choice && choice >= 1 && choice <= inProgressMaterials.length) {
-                        const selectedMaterial = inProgressMaterials[choice - 1];
-                        completeMaterialFabrication(selectedMaterial.material_id);
-                    }
+                    // Show material selection modal untuk completion
+                    showCompletionMaterialModal(inProgressMaterials);
                 }
             })
             .catch(error => {
                 console.error("Error:", error);
-                alert("Error loading materials");
+                showToast('❌ Error loading materials', 'error');
             });
     }
 
-    function completeMaterialFabrication(materialId) {
-        const qcStatus = prompt('Enter QC Status (Passed/Failed/Rework):', 'Passed');
-        if (qcStatus) {
-            const notes = prompt('Enter completion notes:', 'Fabrication process completed successfully');
+    /**
+     * Show Completion Material Selection Modal
+     */
+    function showCompletionMaterialModal(materials) {
+        const modalHTML = `
+            <div id="completionMaterialModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div class="bg-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-white">
+                            <i class="fas fa-check-circle text-green-400 mr-2"></i>
+                            Select Material to Complete
+                        </h3>
+                        <button onclick="closeCompletionMaterialModal()" class="text-gray-400 hover:text-white">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
 
-            const formData = new FormData();
-            formData.append('material_id', materialId);
-            formData.append('qc_status', qcStatus);
-            formData.append('notes', notes);
+                    <div class="mb-4">
+                        <div class="flex items-center space-x-2 text-green-300">
+                            <i class="fas fa-info-circle"></i>
+                            <span class="text-sm">Select a material to mark as completed (≥80% progress required)</span>
+                        </div>
+                    </div>
 
-            fetch('fabrication_ajax.php?action=complete_fabrication', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('🎉 ' + data.message);
-                        refreshFabricationData();
-                    } else {
-                        alert('❌ ' + data.message);
+                    <div class="overflow-y-auto max-h-[60vh] mb-6">
+                        <div class="grid gap-3" id="completionMaterialList">
+                            ${materials.map((material, index) => `
+                                <div class="completion-material-item p-4 bg-gray-750 rounded-lg border border-gray-600 cursor-pointer hover:bg-gray-700 hover:border-green-500 transition duration-200"
+                                    onclick="selectMaterialForCompletion(${material.material_id})">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex-1">
+                                            <h4 class="text-white font-semibold text-lg">${escapeHtml(material.material_name)}</h4>
+                                            <div class="flex items-center space-x-4 mt-2 text-sm">
+                                                <div class="flex items-center space-x-2">
+                                                    <span class="text-gray-400">Progress:</span>
+                                                    <span class="text-green-300 font-bold">${material.fabrication_progress}%</span>
+                                                </div>
+                                                <div class="flex items-center space-x-2">
+                                                    <span class="text-gray-400">Assy:</span>
+                                                    <span class="text-orange-300 font-mono">${material.assy_marking || 'N/A'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                                            <div class="text-green-400 text-xs mt-1">Ready</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end space-x-3 pt-4 border-t border-gray-700">
+                        <button onclick="closeCompletionMaterialModal()"
+                                class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existingModal = document.getElementById('completionMaterialModal');
+        if (existingModal) existingModal.remove();
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeCompletionMaterialModal() {
+        const modal = document.getElementById('completionMaterialModal');
+        if (modal) modal.remove();
+    }
+
+    function selectMaterialForCompletion(materialId) {
+        closeCompletionMaterialModal();
+        showCompletionStatusModal(materialId);
+    }
+
+    function showCompletionStatusModal(materialId) {
+        showSelectionModal(
+            "Completion - Final QC Status",
+            "Select final QC status for completion:",
+            ["Passed", "Failed", "Rework"],
+            "Passed",
+            function(qcStatus) {
+                showInputModal(
+                    "Completion Notes",
+                    "Enter completion notes:",
+                    "Fabrication process completed successfully...",
+                    function(notes) {
+                        completeMaterialFabrication(materialId, qcStatus, notes);
                     }
-                })
-                .catch(error => {
-                    console.error('Completion Error:', error);
-                    alert('❌ Failed to complete fabrication');
-                });
+                );
+            }
+        );
+    }
+
+    /**
+     * Show Selection Modal (untuk pilihan seperti dropdown)
+     */
+    function showSelectionModal(title, message, options, defaultValue, onConfirm) {
+        const optionsHTML = options.map(option => `
+        <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition">
+            <input type="radio" name="selectionOption" value="${option}" 
+                   ${option === defaultValue ? 'checked' : ''} class="mr-3">
+            <span class="text-white">${option}</span>
+        </label>
+    `).join('');
+
+        const modalHTML = `
+    <div id="selectionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-white">${title}</h3>
+                <button onclick="closeSelectionModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-gray-300 mb-3">${message}</p>
+                <div class="space-y-2" id="selectionOptions">
+                    ${optionsHTML}
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeSelectionModal()" 
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
+                    Cancel
+                </button>
+                <button onclick="submitSelectionModal()" 
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        window.selectionModalCallback = onConfirm;
+    }
+
+    function closeSelectionModal() {
+        const modal = document.getElementById('selectionModal');
+        if (modal) modal.remove();
+        window.selectionModalCallback = null;
+    }
+
+    function submitSelectionModal() {
+        const selectedOption = document.querySelector('input[name="selectionOption"]:checked');
+        if (selectedOption && window.selectionModalCallback) {
+            window.selectionModalCallback(selectedOption.value);
         }
+        closeSelectionModal();
+    }
+
+    function completeMaterialFabrication(materialId, qcStatus, notes) {
+        const formData = new FormData();
+        formData.append('material_id', materialId);
+        formData.append('qc_status', qcStatus);
+        formData.append('notes', notes);
+
+        showLoading('Completing fabrication...');
+
+        fetch('fabrication_ajax.php?action=complete_fabrication', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    showToast('🎉 ' + data.message, 'success');
+                    refreshFabricationData();
+                } else {
+                    showToast('❌ ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Completion Error:', error);
+                showToast('❌ Failed to complete fabrication', 'error');
+            });
     }
 
     function performQCCheck(materialId) {
-        if (confirm('Mark this material as QC Passed?')) {
-            const formData = new FormData();
-            formData.append('material_id', materialId);
-            formData.append('qc_status', 'Passed');
-            formData.append('notes', 'QC Check passed - ready for delivery');
+        // GANTI dengan custom confirmation modal
+        showConfirmationModal(
+            "QC Check Confirmation",
+            "Mark this material as QC Passed?",
+            function() {
+                const formData = new FormData();
+                formData.append('material_id', materialId);
+                formData.append('qc_status', 'Passed');
+                formData.append('notes', 'QC Check passed - ready for delivery');
 
-            fetch('fabrication_ajax.php?action=complete_fabrication', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('✅ ' + data.message);
-                        refreshFabricationData();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('QC Error:', error);
-                    alert('❌ QC check failed');
-                });
-        }
+                showLoading('Processing QC check...');
+
+                fetch('fabrication_ajax.php?action=complete_fabrication', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        hideLoading();
+                        if (data.success) {
+                            showToast('✅ ' + data.message, 'success');
+                            refreshFabricationData();
+                        } else {
+                            showToast('❌ ' + data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        hideLoading();
+                        console.error('QC Error:', error);
+                        showToast('❌ QC check failed', 'error');
+                    });
+            }
+        );
     }
 
     function showQCIssue(materialId) {
-        const issueNotes = prompt('Enter QC issue details:');
-        if (issueNotes) {
-            const formData = new FormData();
-            formData.append('material_id', materialId);
-            formData.append('qc_status', 'Failed');
-            formData.append('notes', 'QC Failed: ' + issueNotes);
+        // GANTI dengan custom input modal
+        showInputModal(
+            "QC Issue Details",
+            "Enter QC issue details:",
+            "Describe the quality control issue...",
+            function(issueNotes) {
+                const formData = new FormData();
+                formData.append('material_id', materialId);
+                formData.append('qc_status', 'Failed');
+                formData.append('notes', 'QC Failed: ' + issueNotes);
 
-            fetch('fabrication_ajax.php?action=update_material_progress', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('⚠️ ' + data.message);
-                        refreshFabricationData();
-                    } else {
-                        alert('❌ ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('QC Issue Error:', error);
-                    alert('❌ Failed to record QC issue');
-                });
+                showLoading('Recording QC issue...');
+
+                fetch('fabrication_ajax.php?action=update_material_progress', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        hideLoading();
+                        if (data.success) {
+                            showToast('⚠️ ' + data.message, 'warning');
+                            refreshFabricationData();
+                        } else {
+                            showToast('❌ ' + data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        hideLoading();
+                        console.error('QC Issue Error:', error);
+                        showToast('❌ Failed to record QC issue', 'error');
+                    });
+            }
+        );
+    }
+
+    /**
+     * Show Confirmation Modal
+     */
+    function showConfirmationModal(title, message, onConfirm) {
+        const modalHTML = `
+    <div id="confirmationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-white">${title}</h3>
+                <button onclick="closeConfirmationModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-6">
+                <p class="text-gray-300">${message}</p>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeConfirmationModal()" 
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
+                    Cancel
+                </button>
+                <button onclick="confirmAction()" 
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        window.confirmationModalCallback = onConfirm;
+    }
+
+    function closeConfirmationModal() {
+        const modal = document.getElementById('confirmationModal');
+        if (modal) modal.remove();
+        window.confirmationModalCallback = null;
+    }
+
+    function confirmAction() {
+        if (window.confirmationModalCallback) {
+            window.confirmationModalCallback();
         }
+        closeConfirmationModal();
+    }
+
+    /**
+     * Show Input Modal
+     */
+    function showInputModal(title, message, placeholder, onConfirm) {
+        const modalHTML = `
+    <div id="inputModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-white">${title}</h3>
+                <button onclick="closeInputModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-gray-300 mb-3">${message}</p>
+                <textarea id="inputModalText" 
+                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                    rows="3" placeholder="${placeholder}"></textarea>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeInputModal()" 
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition">
+                    Cancel
+                </button>
+                <button onclick="submitInputModal()" 
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                    Submit
+                </button>
+            </div>
+        </div>
+    </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        window.inputModalCallback = onConfirm;
+    }
+
+    function closeInputModal() {
+        const modal = document.getElementById('inputModal');
+        if (modal) modal.remove();
+        window.inputModalCallback = null;
+    }
+
+    function submitInputModal() {
+        const input = document.getElementById('inputModalText');
+        if (input && window.inputModalCallback) {
+            window.inputModalCallback(input.value);
+        }
+        closeInputModal();
     }
 
     function refreshFabricationData() {
@@ -3780,40 +3806,189 @@ include '../../includes/header.php';
     }
 
     function updateProductionDashboard(productionData) {
-        // Update statistics
-        document.getElementById('activeMaterials').textContent = productionData.length;
+        console.log('📊 ===== PRODUCTION DASHBOARD DEBUG =====');
+        console.log('📦 Raw productionData:', productionData);
+        console.log('📦 Data length:', productionData.length);
 
-        const avgProgress = productionData.length > 0 ?
-            Math.round(productionData.reduce((sum, item) => sum + item.progress_percent, 0) / productionData.length) :
+        // Log sample data untuk cek struktur
+        if (productionData.length > 0) {
+            console.log('📦 Sample data [0]:', productionData[0]);
+            console.log('📦 Available keys:', Object.keys(productionData[0]));
+        }
+
+        // ========================================
+        // 1. UPDATE: Active Materials
+        // ========================================
+        // PERBAIKAN: Cek berbagai kemungkinan field name untuk status
+        const activeMaterials = productionData.filter(item => {
+            const status = item.fabrication_status || item.status || item.production_status || '';
+            return status === 'In Progress' || status === 'in_progress' || status === 'InProgress';
+        }).length;
+
+        console.log('✅ Active Materials:', activeMaterials);
+        document.getElementById('activeMaterials').textContent = activeMaterials;
+
+        // ========================================
+        // 2. UPDATE: Average Progress (FIX NaN)
+        // ========================================
+        // PERBAIKAN: Cek berbagai kemungkinan field name untuk progress
+        const validProgress = productionData
+            .map(item => {
+                // Coba berbagai field name yang mungkin
+                const progress = item.fabrication_progress ||
+                    item.progress_percent ||
+                    item.progress ||
+                    item.percentage ||
+                    0;
+                return parseFloat(progress) || 0;
+            })
+            .filter(val => !isNaN(val) && val >= 0);
+
+        const avgProgress = validProgress.length > 0 ?
+            Math.round(validProgress.reduce((sum, val) => sum + val, 0) / validProgress.length) :
             0;
+
+        console.log('✅ Valid Progress values:', validProgress);
+        console.log('✅ Avg Progress:', avgProgress + '%');
         document.getElementById('avgProgress').textContent = avgProgress + '%';
 
-        // Update production feed
+        // ========================================
+        // 3. UPDATE: Completed Today (NEW!)
+        // ========================================
+        const today = new Date().toISOString().split('T')[0];
+        console.log('📅 Today date:', today);
+
+        const completedToday = productionData.filter(item => {
+            const status = item.fabrication_status || item.status || item.production_status || '';
+            const isCompleted = status === 'Completed' || status === 'completed' || status === 'Complete';
+
+            if (!isCompleted) return false;
+
+            // Cek berbagai field name untuk tanggal
+            const dateField = item.completion_date ||
+                item.completed_date ||
+                item.last_updated ||
+                item.updated_at ||
+                '';
+
+            if (dateField) {
+                const itemDate = dateField.split(' ')[0];
+                return itemDate === today;
+            }
+            return false;
+        }).length;
+
+        console.log('✅ Completed Today:', completedToday);
+        document.getElementById('completedToday').textContent = completedToday;
+
+        // ========================================
+        // 4. UPDATE: Total Operators (NEW!)
+        // ========================================
+        const uniqueOperators = new Set();
+        productionData.forEach(item => {
+            const status = item.fabrication_status || item.status || item.production_status || '';
+            const isActive = status === 'In Progress' || status === 'in_progress' || status === 'InProgress';
+
+            // Cek berbagai field name untuk operator
+            const operator = item.operator_name ||
+                item.operator ||
+                item.assigned_to ||
+                item.worker_name ||
+                '';
+
+            if (isActive && operator && operator !== 'null' && operator.trim() !== '') {
+                uniqueOperators.add(operator);
+            }
+        });
+
+        const totalOperators = uniqueOperators.size;
+        console.log('✅ Unique Operators:', Array.from(uniqueOperators));
+        console.log('✅ Total Operators:', totalOperators);
+        document.getElementById('totalOperators').textContent = totalOperators;
+
+        // ========================================
+        // 5. UPDATE: Production Feed
+        // ========================================
         const feedContainer = document.getElementById('productionFeed');
-        if (productionData.length === 0) {
-            feedContainer.innerHTML = '<div class="text-center py-8 text-gray-500">No active production</div>';
+
+        // PERBAIKAN: Filter dengan berbagai kemungkinan status
+        const activeItems = productionData.filter(item => {
+            const status = item.fabrication_status || item.status || item.production_status || '';
+            const isActive = status === 'In Progress' || status === 'in_progress' || status === 'InProgress';
+            console.log(`🔍 Item "${item.material_name || item.name}" - Status: "${status}" - Active: ${isActive}`);
+            return isActive;
+        });
+
+        console.log('✅ Active Items for Feed:', activeItems.length);
+
+        if (activeItems.length === 0) {
+            console.log('⚠️ No active items found - showing empty state');
+            feedContainer.innerHTML = `
+            <div class="text-center py-8 text-gray-500">
+                <i class="fas fa-info-circle text-2xl mb-2"></i>
+                <p>No active production</p>
+                <p class="text-xs mt-2">Total data: ${productionData.length}</p>
+            </div>`;
         } else {
-            feedContainer.innerHTML = productionData.map(item => `
-            <div class="flex items-center justify-between p-3 bg-gray-750 rounded-lg">
+            console.log('✅ Rendering feed with', activeItems.length, 'items');
+            feedContainer.innerHTML = activeItems.map(item => {
+                const progress = parseFloat(item.fabrication_progress || item.progress_percent || item.progress || 0);
+                const materialName = escapeHtml(item.material_name || item.name || 'Unknown Material');
+                const phase = escapeHtml(item.fabrication_phase || item.phase || 'N/A');
+                const operator = escapeHtml(item.operator_name || item.operator || 'Unassigned');
+
+                return `
+            <div class="flex items-center justify-between p-3 bg-gray-750 rounded-lg hover:bg-gray-700 transition">
                 <div class="flex items-center space-x-3">
-                    <div class="w-3 h-3 bg-orange-500 rounded-full"></div>
+                    <div class="w-3 h-3 bg-orange-500 rounded-full animate-pulse"></div>
                     <div>
-                        <div class="text-white font-semibold text-sm">${item.material_name}</div>
-                        <div class="text-gray-400 text-xs">${item.fabrication_phase} • ${item.workstation}</div>
+                        <div class="text-white font-semibold text-sm">${materialName}</div>
+                        <div class="text-gray-400 text-xs">${phase} • ${operator}</div>
                     </div>
                 </div>
                 <div class="text-right">
-                    <div class="text-white font-bold">${item.progress_percent}%</div>
-                    <div class="text-gray-400 text-xs">${item.operator_name}</div>
+                    <div class="text-white font-bold">${Math.round(progress)}%</div>
+                    <div class="text-gray-400 text-xs">${formatTimeAgo(item.last_updated || item.updated_at)}</div>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+            }).join('');
+        }
+
+        console.log('📊 ===== DASHBOARD UPDATE COMPLETE =====');
+    }
+
+    // ================================================================
+    // Helper function formatTimeAgo (SAMA seperti sebelumnya)
+    // ================================================================
+
+    function formatTimeAgo(dateString) {
+        if (!dateString) return 'Recently';
+
+        try {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch (error) {
+            return 'Recently';
         }
     }
 
     function showWorkshopActivityModal() {
-        // Implementation for workshop activity modal
-        alert('🏭 Workshop Activity Log\n\nFitur pencatatan aktivitas workshop');
+        // GANTI alert dengan custom modal atau toast
+        showToast('🏭 Workshop Activity Log feature is under development', 'info');
     }
 
     // ==============================================
@@ -3821,16 +3996,18 @@ include '../../includes/header.php';
     // ==============================================
 
     function generateQCReport() {
-        alert('📊 Generating QC Report...');
-        // Implementation for QC report generation
+        // GANTI alert dengan toast
+        showToast('📊 Generating QC Report...', 'info');
     }
 
     function showBulkQCCheck() {
-        alert('✅ Bulk QC Check\n\nFitur QC check multiple materials sekaligus');
+        // GANTI alert dengan toast
+        showToast('✅ Bulk QC Check feature is under development', 'info');
     }
 
     function showQCIssueTracker() {
-        alert('⚠️ QC Issue Tracker\n\nMelacak dan memonitor issue kualitas');
+        // GANTI alert dengan toast
+        showToast('⚠️ QC Issue Tracker feature is under development', 'info');
     }
 
     // ==============================================
@@ -3903,6 +4080,284 @@ include '../../includes/header.php';
             refreshProductionData();
         }
     }, 30000);
+
+    // ==============================================
+    // IMPROVED FABRICATION FUNCTIONS
+    // ==============================================
+
+    /**
+     * Start Fabrication Process - NEW IMPROVED VERSION
+     */
+    function startFabricationProcess() {
+        console.log('🚀 Starting fabrication process...');
+
+        fetch(`fabrication_ajax.php?action=get_fabrication_materials&pon_id=<?php echo $pon_id; ?>`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const pendingMaterials = data.materials.filter(m =>
+                        m.fabrication_status === 'Pending' ||
+                        !m.fabrication_status
+                    );
+
+                    if (pendingMaterials.length === 0) {
+                        showToast('✅ All materials have fabrication process started', 'success');
+                        return;
+                    }
+
+                    // Show material selection modal
+                    showMaterialSelectionModal(pendingMaterials);
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                showToast('❌ Error loading materials', 'error');
+            });
+    }
+
+    /**
+     * Show Material Selection Modal
+     */
+    function showMaterialSelectionModal(materials) {
+        const modalHTML = `
+    <div id="materialSelectionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold text-white">
+                    <i class="fas fa-play-circle text-orange-400 mr-2"></i>
+                    Select Material to Start Fabrication
+                </h3>
+                <button onclick="closeMaterialSelectionModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="mb-4">
+                <div class="flex items-center space-x-2 text-orange-300">
+                    <i class="fas fa-info-circle"></i>
+                    <span class="text-sm">Select a material to begin fabrication process</span>
+                </div>
+            </div>
+
+            <div class="overflow-y-auto max-h-[60vh] mb-6">
+                <div class="grid gap-3" id="materialSelectionList">
+                    ${materials.map((material, index) => `
+                        <div class="material-selection-item p-4 bg-gray-750 rounded-lg border border-gray-600 cursor-pointer hover:bg-gray-700 hover:border-orange-500 transition duration-200"
+                             onclick="selectMaterialForFabrication(${material.material_id})">
+                            <div class="flex items-center justify-between">
+                                <div class="flex-1">
+                                    <h4 class="text-white font-semibold text-lg">${escapeHtml(material.material_name)}</h4>
+                                    <div class="flex items-center space-x-4 mt-2 text-sm">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-gray-400">Assy:</span>
+                                            <span class="text-orange-300 font-mono font-medium">${material.assy_marking || 'N/A'}</span>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-gray-400">Qty:</span>
+                                            <span class="text-white font-medium">${material.quantity}</span>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-gray-400">Weight:</span>
+                                            <span class="text-white font-medium">${material.total_weight_kg ? material.total_weight_kg + ' kg' : 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                    ${material.dimensions ? `
+                                    <div class="mt-2">
+                                        <span class="text-gray-400 text-xs">Dimensions: </span>
+                                        <span class="text-gray-300 text-xs">${escapeHtml(material.dimensions)}</span>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <div class="text-right">
+                                    <div class="w-3 h-3 bg-gray-500 rounded-full"></div>
+                                    <div class="text-gray-400 text-xs mt-1">Pending</div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4 border-t border-gray-700">
+                <button onclick="closeMaterialSelectionModal()"
+                        class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('materialSelectionModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeMaterialSelectionModal() {
+        const modal = document.getElementById('materialSelectionModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    /**
+     * Select Material for Fabrication
+     */
+    function selectMaterialForFabrication(materialId) {
+        closeMaterialSelectionModal();
+
+        // Show fabrication phase selection
+        showFabricationPhaseModal(materialId);
+    }
+
+    /**
+     * Show Fabrication Phase Modal
+     */
+    function showFabricationPhaseModal(materialId) {
+        const modalHTML = `
+    <div id="fabricationPhaseModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold text-white">Start Fabrication Process</h3>
+                <button onclick="closeFabricationPhaseModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <form id="fabricationPhaseForm" onsubmit="submitFabricationStart(event, ${materialId})">
+                <div class="mb-6">
+                    <label class="block text-gray-300 font-medium mb-3">Select Initial Fabrication Phase</label>
+                    <div class="space-y-3">
+                        <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent phase-option">
+                            <input type="radio" name="fabrication_phase" value="Material Preparation" class="hidden" checked onchange="updatePhaseSelection(this)">
+                            <div class="flex items-center space-x-3 w-full">
+                                <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                    <div class="w-2 h-2 rounded-full bg-orange-400"></div>
+                                </div>
+                                <div>
+                                    <div class="text-white font-medium">Material Preparation</div>
+                                    <div class="text-gray-400 text-xs">Initial material inspection and setup</div>
+                                </div>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition border-2 border-transparent phase-option">
+                            <input type="radio" name="fabrication_phase" value="Cutting & Preparation" class="hidden" onchange="updatePhaseSelection(this)">
+                            <div class="flex items-center space-x-3 w-full">
+                                <div class="w-4 h-4 rounded-full border-2 border-gray-400 flex items-center justify-center">
+                                    <div class="w-2 h-2 rounded-full bg-transparent"></div>
+                                </div>
+                                <div>
+                                    <div class="text-white font-medium">Cutting & Preparation</div>
+                                    <div class="text-gray-400 text-xs">Material cutting and surface preparation</div>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-gray-300 font-medium mb-2">Initial Notes</label>
+                    <textarea name="notes" rows="3" 
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500"
+                        placeholder="Enter initial fabrication notes..."></textarea>
+                </div>
+
+                <div class="flex items-center justify-end space-x-3">
+                    <button type="button" onclick="closeFabricationPhaseModal()"
+                            class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                        <i class="fas fa-play-circle"></i>
+                        <span>Start Fabrication</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    `;
+
+        // Remove existing modal if any
+        const existingModal = document.getElementById('fabricationPhaseModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Insert modal
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    }
+
+    function closeFabricationPhaseModal() {
+        const modal = document.getElementById('fabricationPhaseModal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    function updatePhaseSelection(selectedInput) {
+        document.querySelectorAll('.phase-option').forEach(option => {
+            option.classList.remove('border-orange-500', 'bg-orange-900', 'bg-opacity-20');
+            const radio = option.querySelector('input[type="radio"]');
+            const dot = option.querySelector('.w-2.h-2');
+
+            if (radio.checked) {
+                option.classList.add('border-orange-500', 'bg-orange-900', 'bg-opacity-20');
+                dot.classList.add('bg-orange-400');
+            } else {
+                dot.classList.remove('bg-orange-400');
+            }
+        });
+    }
+
+    /**
+     * Submit Fabrication Start
+     */
+    function submitFabricationStart(event, materialId) {
+        event.preventDefault();
+
+        const formData = new FormData(event.target);
+        formData.append('material_id', materialId);
+
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+
+        // Show loading state
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+        submitBtn.disabled = true;
+
+        fetch('fabrication_ajax.php?action=start_fabrication', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeFabricationPhaseModal();
+                    showToast('🚀 ' + data.message, 'success');
+                    // Refresh the page to show updated status
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Start Fabrication Error:', error);
+                showToast('❌ ' + error.message, 'error');
+            })
+            .finally(() => {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            });
+    }
 
     // ==============================================
     // LOGISTIK DIVISION - JAVASCRIPT FUNCTIONS
@@ -5413,14 +5868,11 @@ include '../../includes/header.php';
     </div>
 </div>
 
-<!-- Material Fabrication Progress Modal - IMPROVED -->
+<!-- Material Fabrication Progress Modal -->
 <div id="materialFabricationModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <div class="bg-gray-800 rounded-xl p-6 w-full max-w-md">
         <div class="flex items-center justify-between mb-6">
-            <h3 class="text-xl font-bold text-white">
-                <i class="fas fa-hammer text-orange-400 mr-2"></i>
-                Update Material Fabrication
-            </h3>
+            <h3 class="text-xl font-bold text-white">Update Material Fabrication</h3>
             <button onclick="closeMaterialFabricationModal()" class="text-gray-400 hover:text-white">
                 <i class="fas fa-times text-xl"></i>
             </button>
@@ -5429,113 +5881,46 @@ include '../../includes/header.php';
         <form id="materialFabricationForm" onsubmit="updateMaterialFabricationSubmit(event)">
             <input type="hidden" id="fabrication_material_id" name="material_id" value="">
 
-            <!-- Material Info -->
-            <div class="mb-6 p-4 bg-orange-900 bg-opacity-20 rounded-lg border border-orange-700">
-                <h4 class="text-orange-300 font-semibold mb-3 flex items-center">
-                    <i class="fas fa-box mr-2"></i>Material Information
-                </h4>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <span class="text-gray-400 text-sm">Material Name:</span>
-                        <p class="text-white font-semibold" id="fabrication_material_name">-</p>
-                    </div>
-                    <div>
-                        <span class="text-gray-400 text-sm">Assy Marking:</span>
-                        <p class="text-orange-300 font-mono" id="fabrication_assy_marking">-</p>
-                    </div>
+            <div class="mb-4 p-4 bg-orange-900 bg-opacity-20 rounded-lg border border-orange-700">
+                <h4 class="text-orange-300 font-semibold mb-2">Material Info</h4>
+                <p class="text-white font-semibold" id="fabrication_material_name">-</p>
+                <p class="text-gray-300 text-sm">Assy: <span id="fabrication_assy_marking">-</span></p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">Fabrication Phase</label>
+                <select id="fabrication_phase" name="fabrication_phase" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                    <option value="Material Preparation">Material Preparation</option>
+                    <option value="Cutting & Preparation">Cutting & Preparation</option>
+                    <option value="Component Assembly">Component Assembly</option>
+                    <option value="Welding & Joining">Welding & Joining</option>
+                    <option value="Final Assembly & Finishing">Final Assembly & Finishing</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">Progress (%)</label>
+                <input type="range" id="fabrication_progress" name="progress_percent" min="0" max="100" step="1" value="0"
+                    class="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                    oninput="updateFabricationProgressValue(this.value)">
+                <div class="text-center mt-2">
+                    <span id="fabrication_progress_display" class="text-2xl font-bold text-orange-400">0%</span>
                 </div>
             </div>
 
-            <!-- Progress Slider -->
-            <div class="mb-6">
-                <label class="block text-gray-300 font-medium mb-3">
-                    <i class="fas fa-percentage mr-1"></i>Progress (%) *
-                </label>
-                <div class="mb-4">
-                    <input type="range" id="fabrication_progress" name="progress" min="0" max="100" step="1" value="0" required
-                        class="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                        oninput="updateFabricationProgressValue(this.value)">
-                    <div class="flex justify-between text-xs text-gray-400 mt-1">
-                        <span>0%</span>
-                        <span>25%</span>
-                        <span>50%</span>
-                        <span>75%</span>
-                        <span>100%</span>
-                    </div>
-                </div>
-                <div class="text-center">
-                    <span id="fabrication_progress_display" class="text-4xl font-bold text-orange-400">0%</span>
-                </div>
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">Status</label>
+                <select id="fabrication_status" name="status" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Rejected">Rejected</option>
+                </select>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <!-- Fabrication Phase -->
-                <div>
-                    <label class="block text-gray-300 font-medium mb-2">
-                        <i class="fas fa-tasks mr-1"></i>Fabrication Phase *
-                    </label>
-                    <select id="fabrication_phase" name="fabrication_phase" required
-                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
-                        <option value="Material Preparation">Material Preparation</option>
-                        <option value="Cutting & Preparation">Cutting & Preparation</option>
-                        <option value="Component Assembly">Component Assembly</option>
-                        <option value="Welding & Joining">Welding & Joining</option>
-                        <option value="Final Assembly & Finishing">Final Assembly & Finishing</option>
-                    </select>
-                </div>
-
-                <!-- Status -->
-                <div>
-                    <label class="block text-gray-300 font-medium mb-2">
-                        <i class="fas fa-flag mr-1"></i>Status *
-                    </label>
-                    <select id="fabrication_status" name="fabrication_status" required
-                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
-                        <option value="Pending">Pending</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Rejected">Rejected</option>
-                    </select>
-                </div>
-
-                <!-- Workstation -->
-                <div>
-                    <label class="block text-gray-300 font-medium mb-2">
-                        <i class="fas fa-industry mr-1"></i>Workstation
-                    </label>
-                    <select id="workstation" name="workstation"
-                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
-                        <option value="Main Workshop">Main Workshop</option>
-                        <option value="Workstation A">Workstation A</option>
-                        <option value="Workstation B">Workstation B</option>
-                        <option value="Workstation C">Workstation C</option>
-                        <option value="Welding Area">Welding Area</option>
-                        <option value="Assembly Area">Assembly Area</option>
-                        <option value="Finishing Area">Finishing Area</option>
-                    </select>
-                </div>
-
-                <!-- Shift -->
-                <div>
-                    <label class="block text-gray-300 font-medium mb-2">
-                        <i class="fas fa-clock mr-1"></i>Shift
-                    </label>
-                    <select id="shift" name="shift"
-                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
-                        <option value="Shift 1">Shift 1 (07:00 - 15:00)</option>
-                        <option value="Shift 2">Shift 2 (15:00 - 23:00)</option>
-                        <option value="Shift 3">Shift 3 (23:00 - 07:00)</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- QC Status -->
-            <div class="mb-6">
-                <label class="block text-gray-300 font-medium mb-2">
-                    <i class="fas fa-clipboard-check mr-1"></i>QC Status
-                </label>
-                <select id="qc_status" name="qc_status"
-                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">QC Status</label>
+                <select id="qc_status" name="qc_status" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500">
                     <option value="Pending">Pending</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Passed">Passed</option>
@@ -5544,26 +5929,18 @@ include '../../includes/header.php';
                 </select>
             </div>
 
-            <!-- Notes -->
-            <div class="mb-6">
-                <label class="block text-gray-300 font-medium mb-2">
-                    <i class="fas fa-sticky-note mr-1"></i>Progress Notes
-                </label>
-                <textarea id="fabrication_notes" name="notes" rows="4"
-                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500"
-                    placeholder="Enter progress update notes, issues encountered, or achievements..."></textarea>
+            <div class="mb-4">
+                <label class="block text-gray-300 font-medium mb-2">Notes</label>
+                <textarea id="fabrication_notes" name="notes" rows="3" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500" placeholder="Fabrication progress notes..."></textarea>
             </div>
 
-            <!-- Action Buttons -->
             <div class="flex items-center justify-end space-x-3">
-                <button type="button" onclick="closeMaterialFabricationModal()"
-                    class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
-                    <i class="fas fa-times mr-2"></i>Cancel
+                <button type="button" onclick="closeMaterialFabricationModal()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold transition">
+                    Cancel
                 </button>
-                <button type="submit"
-                    class="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
+                <button type="submit" class="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition flex items-center space-x-2">
                     <i class="fas fa-save"></i>
-                    <span>Save Progress</span>
+                    <span>Update Progress</span>
                 </button>
             </div>
         </form>
@@ -5677,6 +6054,37 @@ include '../../includes/header.php';
     .bg-red-400 {
         background-color: #f87171;
     }
+
+    /* Add to existing CSS */
+    .material-selection-item {
+        transition: all 0.3s ease;
+        border: 1px solid #4b5563;
+    }
+
+    .material-selection-item:hover {
+        border-color: #f97316;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(249, 115, 22, 0.2);
+    }
+
+    .phase-option {
+        transition: all 0.2s ease-in-out;
+    }
+
+    .phase-option:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Button hover effects */
+    .bg-orange-600:hover {
+        background-color: #ea580c;
+        transform: translateY(-1px);
+    }
+
+    .bg-green-600:hover {
+        background-color: #16a34a;
+        transform: translateY(-1px);
+    }
 </style>
 
 <?php
@@ -5700,7 +6108,7 @@ function getDivisionQuickActions($division, $theme_color)
             ['icon' => 'fa-chart-line', 'title' => 'Order Reports', 'subtitle' => 'View purchase reports', 'onclick' => 'showOrderReports()']
         ],
         'Fabrikasi' => [
-            ['icon' => 'fa-play-circle', 'title' => 'Start Fabrication', 'subtitle' => 'Begin material processing', 'onclick' => 'showMaterialFabricationModal()'],
+            ['icon' => 'fa-play-circle', 'title' => 'Start Fabrication', 'subtitle' => 'Begin material processing', 'onclick' => 'showMaterialForFabricationModal()'],
             ['icon' => 'fa-chart-line', 'title' => 'Production Tracking', 'subtitle' => 'Real-time monitoring', 'onclick' => 'switchTab(\'progress\')'],
             ['icon' => 'fa-clipboard-check', 'title' => 'QC Dashboard', 'subtitle' => 'Quality inspection', 'onclick' => 'switchTab(\'qc_checks\')'],
             ['icon' => 'fa-chart-bar', 'title' => 'Generate Report', 'subtitle' => 'Fabrication analytics', 'onclick' => 'switchTab(\'reports\')']
@@ -6728,7 +7136,7 @@ function getFabricationTabContent($pon_id, $tasks, $config)
         return $m['fabrication_status'] === 'Completed';
     })) . ' completed
                     </span>
-                    <button onclick="showMaterialFabricationModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
+                    <button onclick="startFabricationProcess()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2">
                         <i class="fas fa-play-circle"></i>
                         <span>Start Fabrication</span>
                     </button>
@@ -6775,67 +7183,58 @@ function getFabricationTabContent($pon_id, $tasks, $config)
             }
 
             $html .= '
-            <tr class="hover:bg-gray-800 transition">
-                <td class="px-4 py-3">
-                    <p class="text-white font-semibold">' . htmlspecialchars($material['material_name']) . '</p>
-                    <p class="text-orange-300 text-sm font-mono">' . htmlspecialchars($material['assy_marking'] ?? 'N/A') . '</p>
-                </td>
-                <td class="px-4 py-3">
-                    <p class="text-gray-300 text-sm">Qty: ' . $material['quantity'] . '</p>
-                    <p class="text-gray-400 text-xs">' . htmlspecialchars($material['dimensions'] ?? '') . '</p>
-                    <p class="text-gray-400 text-xs">' . ($material['total_weight_kg'] ? number_format($material['total_weight_kg'], 2) . ' kg' : '') . '</p>
-                </td>
-                <td class="px-4 py-3 text-center">
-                    ' . $order_status_badge . '
-                </td>
-                <td class="px-4 py-3 text-center">
-                    <div class="flex flex-col items-center">
-                        <span class="text-white font-bold text-lg">' . $material['fabrication_progress'] . '%</span>
-                        <div class="w-full bg-gray-700 rounded-full h-2 mt-1">
-                            <div class="bg-orange-500 h-2 rounded-full" style="width: ' . $material['fabrication_progress'] . '%"></div>
-                        </div>
-                    </div>
-                </td>
-                <td class="px-4 py-3 text-center">
-                    ' . $fabrication_status_badge . '
-                </td>
-                <td class="px-4 py-3 text-center text-gray-300 text-sm">
-                    ' . $last_updated . '
-                </td>
-                <td class="px-4 py-3 text-center">';
-            // Tambahkan kondisi PHP untuk tombol aksi
-            if (canManageFabrication()) {
-                $html .= '
-                        <div class="flex items-center justify-center space-x-2">
-                            <button onclick="updateMaterialFabrication(' . $material['material_id'] . ')" 
-                                    class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-semibold transition"
-                                    title="Update Progress">';
+                        <tr class="hover:bg-gray-800 transition">
+                            <td class="px-4 py-3">
+                                <p class="text-white font-semibold">' . htmlspecialchars($material['material_name']) . '</p>
+                                <p class="text-orange-300 text-sm font-mono">' . htmlspecialchars($material['assy_marking'] ?? 'N/A') . '</p>
+                            </td>
+                            <td class="px-4 py-3">
+                                <p class="text-gray-300 text-sm">Qty: ' . $material['quantity'] . '</p>
+                                <p class="text-gray-400 text-xs">' . htmlspecialchars($material['dimensions'] ?? '') . '</p>
+                                <p class="text-gray-400 text-xs">' . ($material['total_weight_kg'] ? number_format($material['total_weight_kg'], 2) . ' kg' : '') . '</p>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                ' . $order_status_badge . '
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="text-white font-bold text-lg">' . $material['fabrication_progress'] . '%</span>
+                                    <div class="w-full bg-gray-700 rounded-full h-2 mt-1">
+                                        <div class="bg-orange-500 h-2 rounded-full" style="width: ' . $material['fabrication_progress'] . '%"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                ' . $fabrication_status_badge . '
+                            </td>
+                            <td class="px-4 py-3 text-center text-gray-300 text-sm">
+                                ' . $last_updated . '
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <div class="flex justify-center">';
 
-                // Tentukan teks tombol berdasarkan status
-                if ($material['fabrication_status'] === 'Pending') {
-                    $html .= '<i class="fas fa-play mr-1"></i>Start';
-                } else {
-                    $html .= '<i class="fas fa-edit mr-1"></i>Update';
-                }
+            // PERBAIKAN: Tombol Actions yang lebih konsisten
+            if ($material['fabrication_status'] === 'Pending' || !$material['fabrication_status']) {
                 $html .= '
-                            </button>
-                            <button onclick="showMaterialHistory(' . $material['material_id'] . ')" 
-                                    class="text-blue-400 hover:text-blue-300" 
-                                    title="View History">
-                                <i class="fas fa-history"></i>
-                            </button>
-                        </div>';
+                                    <button onclick="startMaterialFabrication(' . $material['material_id'] . ')" 
+                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm font-semibold transition duration-200 flex items-center space-x-1">
+                                        <i class="fas fa-play mr-1"></i>
+                                        <span>Start</span>
+                                    </button>';
             } else {
                 $html .= '
-                        <span class="text-gray-500 text-sm">Read-only</span>';
+                                    <button onclick="updateMaterialFabrication(' . $material['material_id'] . ')" 
+                                            class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded text-sm font-semibold transition duration-200 flex items-center space-x-1">
+                                        <i class="fas fa-edit mr-1"></i>
+                                        <span>Update</span>
+                                    </button>';
             }
-
             $html .= '
-                </td>
-            </tr>';
+                                </div>
+                            </td>
+                        </tr>';
         }
     }
-
     $html .= '
                     </tbody>
                 </table>
